@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground: #1a1a1a;
+  --background: #fefbf7;
+  /* Landing / zest club */
+  --text-primary: #282828;
+  --btn-primary-from: rgba(228, 90, 255, 0.7);
+  --btn-primary-to: rgba(216, 48, 249, 0.7);
+  --btn-primary-border: #fcffc3;
+  --btn-secondary-from: rgba(197, 224, 229, 0.7);
+  --btn-secondary-to: rgba(161, 187, 190, 0.7);
+  --btn-secondary-border: #c3dfff;
+  --btn-secondary-text: #152f33;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+/* Tipografía: títulos con Lora */
+.font-heading {
+  font-family: var(--font-lora), Georgia, serif;
+}
+
+/* Botón primario (rosa) estilo landing */
+.btn-primary-landing {
+  @apply font-manrope rounded-full px-6 py-3 font-medium leading-normal tracking-[-0.72px] transition-all duration-300;
+  background: linear-gradient(to bottom, var(--btn-primary-from), var(--btn-primary-to));
+  color: white;
+  border: 1px solid var(--btn-primary-border);
+}
+
+.btn-primary-landing:hover {
+  opacity: 0.95;
+}
+
+/* Botón secundario (azul) estilo landing */
+.btn-secondary-landing {
+  @apply font-manrope rounded-full px-6 py-3 font-medium leading-normal tracking-[-0.72px] transition-all duration-300;
+  background: linear-gradient(to bottom, var(--btn-secondary-from), var(--btn-secondary-to));
+  color: var(--btn-secondary-text);
+  border: 1px solid var(--btn-secondary-border);
+}
+
+.btn-secondary-landing:hover {
+  opacity: 0.95;
+}
+
+/* Card estilo landing */
+.card-landing {
+  @apply overflow-hidden rounded-2xl border border-[#282828]/10 bg-white text-left shadow-sm transition;
+}
+
+.card-landing:hover {
+  @apply border-[#282828]/20 shadow-md;
+}
+
+/* Borde con gradiente que se mueve en el CTA principal */
+@keyframes cta-stroke-gradient-move {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+.cta-stroke-gradient-animate {
+  background: linear-gradient(
+    90deg,
+    rgba(252, 255, 195, 0.65),
+    rgba(255, 200, 255, 0.45),
+    rgba(216, 48, 249, 0.55),
+    rgba(255, 200, 255, 0.45),
+    rgba(252, 255, 195, 0.65)
+  );
+  background-size: 200% 100%;
+  animation: cta-stroke-gradient-move 3s linear infinite;
+}
+
+/* Logo zest: serif italic */
+.font-heading-italic {
+  font-family: var(--font-lora), Georgia, serif;
+  font-style: italic;
+  font-weight: 500;
+}
+
+/* Barra búsqueda fija: borde con gradiente (estático para evitar fallos de layout) */
+.search-bar-border-wrap {
+  position: relative;
+  border-radius: 100px;
+  padding: 2px;
+  background: linear-gradient(
+    135deg,
+    rgba(252, 255, 195, 0.8),
+    rgba(228, 90, 255, 0.5),
+    rgba(216, 48, 249, 0.6),
+    rgba(252, 255, 195, 0.8)
+  );
+}
+
+.search-bar-border-inner {
+  border-radius: 98px;
+  background: linear-gradient(to bottom, #fafafa, white);
+  min-height: 52px;
+}
+
+/* Placeholder búsqueda: loop infinito (cada ítem 3s, reset instantáneo al final) */
+@keyframes search-placeholder-scroll {
+  0% { transform: translateY(0); }
+  16.667% { transform: translateY(-32px); }
+  33.333% { transform: translateY(-64px); }
+  50% { transform: translateY(-96px); }
+  66.667% { transform: translateY(-128px); }
+  83.333% { transform: translateY(-160px); }
+  83.334% { transform: translateY(0); }
+  100% { transform: translateY(0); }
+}
+
+.animate-search-placeholder {
+  animation: search-placeholder-scroll 18s linear infinite;
+}
