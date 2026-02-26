@@ -238,9 +238,9 @@ function getPriceBucket(
   return "Precio medio";
 }
 
-function placeMatchesAmbiente(place: PlaceResult, chip: (typeof AMBIENTE_CHIPS)[number]): boolean {
+function placeMatchesAmbiente(place: PlaceResult, chip: string): boolean {
   const text = getPlaceSearchText(place);
-  const keywords = AMBIENTE_KEYWORDS[chip];
+  const keywords = AMBIENTE_KEYWORDS[chip as keyof typeof AMBIENTE_KEYWORDS] ?? [];
   return keywords.some((k) => text.includes(k));
 }
 
@@ -256,11 +256,11 @@ function placeMatchesTipoComida(place: PlaceResult, chip: string): boolean {
   return directTypeMatch || matchKw || matchType;
 }
 
-function placeMatchesEspacio(place: PlaceResult, chip: (typeof ESPACIO_CHIPS)[number]): boolean {
+function placeMatchesEspacio(place: PlaceResult, chip: string): boolean {
   const text = getPlaceSearchText(place);
   const types = (place.types ?? []).map((t) => t.toLowerCase());
-  const keywords = ESPACIO_KEYWORDS[chip];
-  const typeList = ESPACIO_TYPES[chip];
+  const keywords = ESPACIO_KEYWORDS[chip as keyof typeof ESPACIO_KEYWORDS] ?? [];
+  const typeList = ESPACIO_TYPES[chip as keyof typeof ESPACIO_TYPES] ?? [];
   const matchKw = keywords.some((k) => text.includes(k));
   const matchType = typeList.some((t) => types.some((pt) => pt.includes(t) || t.includes(pt)));
   return matchKw || matchType;
@@ -273,11 +273,11 @@ function placeMatchesCocina(place: PlaceResult, cuisineLabel: string): boolean {
   return keywords.some((k) => text.includes(k));
 }
 
-function placeMatchesEtnia(place: PlaceResult, chip: (typeof ETNIA_CHIPS)[number]): boolean {
+function placeMatchesEtnia(place: PlaceResult, chip: string): boolean {
   const text = getPlaceSearchText(place);
   const types = (place.types ?? []).map((t) => t.toLowerCase());
-  const keywords = ETNIA_KEYWORDS[chip];
-  const typeList = ETNIA_TYPES[chip];
+  const keywords = ETNIA_KEYWORDS[chip as keyof typeof ETNIA_KEYWORDS] ?? [];
+  const typeList = ETNIA_TYPES[chip as keyof typeof ETNIA_TYPES] ?? [];
   const matchKw = keywords?.some((k) => text.includes(k)) ?? false;
   const matchType = typeList?.length ? typeList.some((t) => types.some((pt) => pt.includes(t) || t.includes(pt))) : false;
   return matchKw || matchType;

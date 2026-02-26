@@ -71,7 +71,7 @@ export function buildCanonicalCityMap(
 
   const withCoords: CityPoint[] = [];
   const withoutCoords: Array<{ city: string; count: number }> = [];
-  for (const [city, s] of stats.entries()) {
+  Array.from(stats.entries()).forEach(([city, s]) => {
     if (s.coordCount > 0) {
       withCoords.push({
         city,
@@ -82,7 +82,7 @@ export function buildCanonicalCityMap(
     } else {
       withoutCoords.push({ city, count: s.count });
     }
-  }
+  });
 
   const map = new Map<string, string>();
   if (withCoords.length > 0) {
@@ -156,4 +156,3 @@ export function extractCityFromAddress(address?: string | null): string | null {
   const normalized = normalizeCityLabel(candidate);
   return normalized || null;
 }
-

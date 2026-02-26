@@ -129,11 +129,11 @@ function featureToRow(f: GeoJSONFeature): FilaLugar | null {
   const address = loc?.address?.trim() ?? null;
   const countryCode = loc?.country_code?.trim() ?? null;
   const questions = f.properties?.questions ?? [];
-  const tipoComida =
-    (Array.isArray(questions) &&
-      (questions as Array<{ question: string; selected_option?: string }>).find(
-        (q) => q.question === "Tipo de comida"
-      )?.selected_option?.trim()) ?? null;
+  const tipoComida = Array.isArray(questions)
+    ? ((questions as Array<{ question: string; selected_option?: string }>)
+        .find((q) => q.question === "Tipo de comida")
+        ?.selected_option?.trim() ?? null)
+    : null;
 
   return {
     nombre: name,
