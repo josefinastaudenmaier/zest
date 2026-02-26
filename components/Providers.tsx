@@ -33,8 +33,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     try {
-      const redirectTo =
-        typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
+      const envSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+      const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
+      const preferEnvInProd = process.env.NODE_ENV === "production" && Boolean(envSiteUrl);
+      const baseUrl = (preferEnvInProd ? envSiteUrl : browserOrigin || envSiteUrl)?.replace(/\/$/, "");
+      const redirectTo = baseUrl ? `${baseUrl}/auth/callback` : undefined;
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
