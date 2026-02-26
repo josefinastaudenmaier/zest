@@ -69,7 +69,10 @@ export default function HomePage() {
                   router.push("/buscar");
                   return;
                 }
-                await signInWithGoogle();
+                const result = await signInWithGoogle();
+                if (!result.ok) {
+                  window.alert(result.message ?? "No pudimos iniciar sesión. Probá de nuevo.");
+                }
               }}
               className="group relative inline-flex overflow-hidden rounded-full bg-gradient-to-b from-[rgba(228,90,255,0.7)] to-[rgba(216,48,249,0.7)] font-manrope px-6 py-3 font-medium leading-normal text-white tracking-[-0.72px] transition-all duration-300 disabled:opacity-60"
               disabled={loading}

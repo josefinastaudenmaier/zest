@@ -7,7 +7,7 @@ import type { User } from "@supabase/supabase-js";
 type AuthContextType = {
   user: User | null;
   loading: boolean;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: () => Promise<{ ok: boolean; message?: string }>;
   signOut: () => Promise<void>;
 };
 
@@ -32,10 +32,29 @@ export function Providers({ children }: { children: React.ReactNode }) {
   }, [supabase]);
 
   const signInWithGoogle = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
-    });
+    try {
+      const redirectTo =
+        typeof window !== "undefined" ? `${window.location.origin}/auth/callback` : undefined;
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: redirectTo ? { redirectTo } : undefined,
+      });
+
+      if (error) {
+        console.error("Google auth error:", error.message);
+        return { ok: false, message: "No pudimos iniciar sesión en este momento. Probá de nuevo." };
+      }
+
+      if (data?.url && typeof window !== "undefined") {
+        window.location.assign(data.url);
+      }
+
+      return { ok: true };
+    } catch (error) {
+      console.error("Google auth unexpected error:", error);
+      return { ok: false, message: "Hubo un problema al abrir Google. Intentá nuevamente." };
+    }
   };
 
   const signOut = async () => {
