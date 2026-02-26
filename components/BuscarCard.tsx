@@ -168,7 +168,7 @@ export function BuscarCard({
       : null;
 
   return (
-    <div className="relative flex w-full flex-col items-start overflow-hidden rounded-[30px] border border-[#f7f3f1] bg-gradient-to-b from-[#fafafa] to-white pb-[24px] gap-4">
+    <div className="relative flex w-full flex-col items-start overflow-hidden rounded-[30px] border border-[#f7f3f1] bg-gradient-to-b from-[#fafafa] to-white pb-[24px] gap-5">
       {/* Imagen: h 200px, solo esquinas superiores 24px (Figma 45:295) */}
       <div className="relative h-[200px] w-full shrink-0 overflow-hidden rounded-tl-[24px] rounded-tr-[24px] bg-[#d9d9d9]">
         {imgSrc && !imageError ? (
@@ -184,13 +184,13 @@ export function BuscarCard({
         )}
       </div>
       {/* Contenido: gap 8px, px 20px (Figma 45:296) */}
-      <div className="relative flex w-full flex-col gap-2 px-5">
+      <div className="relative flex w-full flex-col gap-2">
         <div className="flex items-center justify-start">
-          <p className="font-manrope text-left text-xs font-medium uppercase leading-normal tracking-[0.48px] text-[rgba(21,47,51,0.5)]">
+          <p className="px-5 font-manrope text-left text-xs font-medium uppercase leading-normal tracking-[0.48px] text-[rgba(21,47,51,0.5)]">
             {category}
           </p>
         </div>
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 px-5">
           <p className="font-manrope text-lg font-medium leading-[0] tracking-[-0.72px] text-[#152f33]">
             <span className="leading-[normal]">{name}</span>
             {showCityCountry && (
@@ -210,17 +210,17 @@ export function BuscarCard({
           )}
         </div>
         {hasVisited ? (
-          <div className="flex flex-wrap gap-1.5 items-start">
+          <div className="absolute left-[19px] top-[-181px] z-20">
             {topChip ? (
               <div
                 key={topChip.label}
-                className="flex items-center gap-1 rounded-[1000px] border border-[#191e1f, 0.16] bg-gradient-to-b from-[rgba(108,130,133,0.12)] to-[rgba(25,30,31,0.12)] px-3 py-1.5"
+                className="flex items-center gap-1 rounded-[1000px] border border-[#191e1f] bg-[#fffbf8] px-3 py-1.5"
               >
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#6c8285]">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[#152f33]">
                   {CHIP_ICONS[topChip.icon] ?? CHIP_ICONS.wifi}
                 </span>
-                <span className="font-manrope text-xs font-medium leading-normal tracking-[-0.48px] text-[#6c8285]">
-                  {topChip.label}
+                <span className="font-manrope text-xs font-medium leading-normal tracking-[-0.48px] text-[#152f33]">
+                  {topChip.label.toLowerCase()}
                 </span>
               </div>
             ) : null}
@@ -233,7 +233,7 @@ export function BuscarCard({
           </div>
         )}
         {hasReview && (
-          <div className="mt-1">
+          <div className="w-full px-5 pt-3">
             <button
               type="button"
               onClick={(e) => {
@@ -241,7 +241,7 @@ export function BuscarCard({
                 e.stopPropagation();
                 setIsReviewOpen(true);
               }}
-              className="relative z-20 inline-flex h-10 items-center justify-center rounded-[999px] bg-[#b7cbd2] px-8 font-manrope text-[40px] font-medium leading-[0] tracking-[-1.6px] text-[#152f33] md:text-lg md:tracking-[-0.72px]"
+              className="relative z-20 inline-flex w-full items-center justify-center rounded-[999px] border border-[#c3dfff] bg-gradient-to-b from-[rgba(197,224,229,0.7)] to-[rgba(161,187,190,0.7)] px-6 py-2.5 font-manrope text-sm font-medium leading-normal tracking-[-0.56px] text-[#152f33]"
             >
               <span className="leading-[normal]">Ver reseña</span>
             </button>

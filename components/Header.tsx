@@ -34,9 +34,7 @@ export function Header() {
   if (isBuscar) {
     return (
       <header className="sticky top-0 z-50 w-full px-4 pt-4 pb-3 md:pt-6 md:pb-2">
-        {/* Mismo estilo que la barra de la home: glass, rounded-full, backdrop-blur */}
         <div className="mx-auto flex w-full max-w-[1300px] flex-wrap items-center justify-between gap-2 rounded-full bg-white/10 px-5 py-3.5 backdrop-blur-md">
-          {/* Logo (Figma 38:161): desktop h 30px, w 96.5px */}
           <Link
             href="/"
             className="flex h-8 shrink-0 items-center md:h-[30px] md:w-[96.5px]"
@@ -51,14 +49,8 @@ export function Header() {
             />
           </Link>
 
-          {/* Mobile (Figma 38:470): Favs + avatar + nombre + chevron */}
+          {/* Mobile */}
           <div className="flex md:hidden items-center gap-6">
-            <Link
-              href="/favoritos"
-              className="font-manrope text-base font-medium leading-normal tracking-[-0.64px] text-[#152f33] hover:opacity-80"
-            >
-              Favs
-            </Link>
             {loading ? (
               <span className="h-6 w-6 animate-pulse rounded-full bg-[#152f33]/10" />
             ) : user ? (
@@ -122,14 +114,8 @@ export function Header() {
             )}
           </div>
 
-          {/* Desktop (Figma 38:160): gap 20px, Mis favoritos 18px, bloque usuario gap 12px, avatar 24px, nombre 18px sin cortar, chevron 24px */}
+          {/* Desktop */}
           <div className="hidden md:flex items-center gap-[20px] font-manrope">
-            <Link
-              href="/favoritos"
-              className="shrink-0 font-medium leading-normal text-[18px] text-[#152f33] tracking-[-0.72px] hover:opacity-80"
-            >
-              Mis favoritos
-            </Link>
             {loading ? (
               <span className="text-[18px] text-[#152f33]/50">...</span>
             ) : user ? (
@@ -216,12 +202,6 @@ export function Header() {
           </Link>
         </div>
         <div className="flex items-center gap-3 font-manrope">
-          <Link
-            href="/favoritos"
-            className="text-sm font-medium text-[#282828] opacity-90 hover:opacity-100"
-          >
-            Favoritos
-          </Link>
           {loading ? (
             <span className="text-sm opacity-50">...</span>
           ) : user ? (

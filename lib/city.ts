@@ -2,6 +2,11 @@ export function normalizeCityLabel(city: string): string {
   const raw = city.trim();
   if (!raw) return "";
 
+  // Unificar variantes de Ciudad Autónoma de Buenos Aires.
+  if (/(^|\b)(cdad\.?|ciudad)\s+aut[oó]noma\s+de\s+buenos\s+aires(\b|$)/i.test(raw)) {
+    return "CABA";
+  }
+
   // Regla pedida: eliminar cualquier palabra que contenga números
   // Ej: "1100-213 Lisboa" -> "Lisboa", "London EC2A 4PY" -> "London"
   const cleaned = raw
@@ -10,6 +15,10 @@ export function normalizeCityLabel(city: string): string {
     .join(" ")
     .replace(/\s{2,}/g, " ")
     .trim();
+
+  if (/^buenos\s+aires$/i.test(cleaned)) {
+    return "CABA";
+  }
 
   return cleaned;
 }

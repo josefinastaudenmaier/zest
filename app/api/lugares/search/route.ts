@@ -7,30 +7,89 @@ import type { PlaceResult } from "@/types/places";
 
 export const dynamic = "force-dynamic";
 
-/** Palabras que expanden búsqueda semántica (pet friendly, tranquilo, etc.) en resena_personal */
-const SEMANTIC_KEYWORDS: Record<string, string[]> = {
+// Expansión semántica: cada término del usuario se expande a keywords que buscar en nombre/reseña/tipo
+const SEMANTIC_MAP: Record<string, string[]> = {
   "pet friendly": ["perro", "perros", "mascota", "mascotas", "pet friendly", "pet-friendly", "dog friendly"],
+  "para perros": ["perro", "perros", "mascota", "mascotas", "pet friendly"],
   tranquilo: ["tranquilo", "tranquila", "silencioso", "calmado", "relajado", "íntimo", "intimo"],
+  silencioso: ["tranquilo", "tranquila", "silencioso", "calmado"],
   movido: ["movido", "música", "musica", "animado", "vivo", "fiesta"],
   wifi: ["wifi", "internet", "trabajar", "trabajo", "laptop", "enchufe", "conexión", "conexion"],
-  reservar: ["reservar", "reserva", "reservación", "reservacion", "lleno", "espera"],
-  terraza: ["terraza", "afuera", "exterior", "al aire libre", "jardín", "jardin", "parque"],
+  "para trabajar": ["wifi", "internet", "trabajar", "laptop", "enchufe"],
+  "para estudiar": ["wifi", "internet", "estudiar", "laptop", "tranquilo"],
+  reservar: ["reservar", "reserva", "reservación", "lleno", "espera"],
+  terraza: ["terraza", "afuera", "exterior", "aire libre", "jardín", "jardin", "patio", "vereda"],
+  "al aire libre": ["terraza", "afuera", "exterior", "jardín", "patio", "vereda"],
   romántico: ["romántico", "romantico", "pareja", "cita", "intimidad"],
-  familiar: ["familiar", "niños", "niños", "chicos", "kids"],
-  "precio bajo": ["económico", "economico", "barato", "barata", "accesible", "buen precio"],
-  "precio alto": ["caro", "cara", "precio elevado", "costoso"],
+  "para una cita": ["romántico", "romantico", "pareja", "cita", "intimidad"],
+  familiar: ["familiar", "niños", "chicos", "kids"],
+  "con niños": ["familiar", "niños", "chicos", "kids"],
+  barato: ["económico", "economico", "barato", "accesible", "buen precio"],
+  económico: ["económico", "economico", "barato", "accesible", "buen precio"],
+  "sin tacc": ["sin tacc", "celíaco", "celiaco", "gluten free", "sin gluten"],
+  vegano: ["vegano", "vegana", "vegan", "plant based", "vegetariano"],
+  vegetariano: ["vegetariano", "vegetariana", "vegano", "plant based"],
+  desayuno: ["desayuno", "breakfast", "tostadas", "medialuna", "café con leche", "croissant"],
+  brunch: ["brunch"],
+  almuerzo: ["almuerzo", "lunch", "menú del día"],
+  cena: ["cena", "dinner", "cenar", "noche"],
+  café: ["café", "cafe", "coffee", "especialidad"],
+  "café de especialidad": ["café", "especialidad", "specialty", "barista", "filtrado"],
+  sushi: ["sushi", "japonés", "japonesa", "nikkei", "sashimi", "ramen"],
+  pizza: ["pizza", "pizzería", "pizzeria", "napolitana"],
+  hamburguesa: ["hamburguesa", "burger", "smash"],
+  pasta: ["pasta", "pastas", "trattoria", "italiano", "italiana"],
+  tacos: ["tacos", "taquería", "mexicano", "mexicana"],
+  helado: ["helado", "gelato", "heladería"],
+  empanadas: ["empanadas", "empanada"],
+  parrilla: ["parrilla", "asado", "bife", "argentino"],
+  bodegón: ["bodegón", "bodegon", "cantina", "casero"],
+  bar: ["bar", "wine bar", "copa", "vino", "vermú", "vermu"],
+  "wine bar": ["wine bar", "vino", "copa", "natural wine"],
+  cerveza: ["cerveza", "birra", "craft", "artesanal"],
 };
 
-function buildSearchQuery(q: string): string {
-  const trimmed = q.trim().toLowerCase();
-  if (!trimmed) return "";
-  const terms: string[] = [trimmed];
-  for (const [label, keywords] of Object.entries(SEMANTIC_KEYWORDS)) {
-    if (keywords.some((kw) => trimmed.includes(kw))) {
-      terms.push(label);
+function expandQuery(q: string): string[] {
+  const normalized = q.trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const terms = new Set<string>([normalized]);
+
+  for (const [key, expansions] of Object.entries(SEMANTIC_MAP)) {
+    const normalizedKey = key.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (normalized.includes(normalizedKey)) {
+      for (const exp of expansions) {
+        terms.add(exp.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+      }
     }
   }
-  return terms.join(" ");
+  return Array.from(terms);
+}
+
+function normalize(s: string): string {
+  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function scoreRow(
+  row: Record<string, unknown>,
+  terms: string[]
+): number {
+  const nombre = normalize(String(row.nombre ?? ""));
+  const resena = normalize(String(row.review_text_published ?? ""));
+  const tipo = normalize(String(row.tipo_comida ?? ""));
+  const hasResena = resena.trim().length > 10;
+
+  let score = 0;
+  for (const term of terms) {
+    if (nombre.includes(term)) score += 10;
+    if (tipo.includes(term)) score += 5;
+    if (hasResena && resena.includes(term)) score += 3;
+  }
+
+  // Sin reseña: penalizar para que vayan al final
+  if (!hasResena && score > 0) score -= 2;
+  if (!hasResena && score === 0) score = -1;
+
+  return score;
 }
 
 function lugarToPlaceResult(
@@ -81,30 +140,30 @@ export async function GET(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) {
-    return NextResponse.json(
-      { error: "Supabase no configurado" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Supabase no configurado" }, { status: 500 });
   }
+
   const { searchParams } = request.nextUrl ?? new URL(request.url);
   const q = searchParams.get("q") ?? "";
   const pais = searchParams.get("pais") ?? "";
   const ciudad = searchParams.get("ciudad") ?? "";
 
-  const supabase = createClient(url, key);
-  let query = supabase
+  const supabase = createClient(url, key, {
+    global: { fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }) },
+  });
+
+  const { data: rawData, error } = await supabase
     .from("lugares")
     .select("id, nombre, direccion, ciudad, pais, lat, lng, google_maps_url, five_star_rating_published, tipo_comida, review_text_published, fecha_resena, questions")
     .order("five_star_rating_published", { ascending: false, nullsFirst: false })
     .limit(2000);
 
-  const { data: rawData, error } = await query;
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  const searchTerm = q.trim().replace(/%/g, "").replace(/\s+/g, " ").trim().toLowerCase();
   const cityFilter = ciudad.trim().toLowerCase();
+
   const baseRows: Record<string, unknown>[] = (rawData ?? []).filter((row) => {
     if (!esLugarDeComida(String(row.nombre ?? ""))) return false;
     if (!pais.trim()) return true;
@@ -120,21 +179,23 @@ export async function GET(request: NextRequest) {
     50
   );
 
+  // Filtrar por ciudad si hay seleccionada
   let data: Record<string, unknown>[] = baseRows.filter((row) => {
     if (!cityFilter) return true;
     const rawCity = extractCityFromAddress((row.direccion as string | null) ?? null);
     const city = canonicalizeCity(rawCity, canonicalMap);
     return city ? city.toLowerCase() === cityFilter : false;
   });
-  if (searchTerm) {
-    data = data.filter((row) => {
-      const nombre = String(row.nombre ?? "").toLowerCase();
-      const review = String(row.review_text_published ?? "").toLowerCase();
-      const tipo = String(row.tipo_comida ?? "").toLowerCase();
-      return nombre.includes(searchTerm) || review.includes(searchTerm) || tipo.includes(searchTerm);
-    });
+
+  // Expandir la query con sinónimos semánticos
+  const terms = q.trim() ? expandQuery(q) : [];
+
+  // Filtrar: incluir si score > 0 O si no hay query
+  if (terms.length > 0) {
+    data = data.filter((row) => scoreRow(row, terms) > 0);
   }
 
+  // Deduplicar
   const dedup = new Map<string, Record<string, unknown>>();
   for (const row of data) {
     const key = String(row.google_maps_url ?? row.nombre ?? row.id ?? "");
@@ -142,7 +203,17 @@ export async function GET(request: NextRequest) {
     if (!dedup.has(key)) dedup.set(key, row);
   }
 
-  let results = Array.from(dedup.values()).map((row) => {
+  // Ordenar por relevancia semántica (score desc), luego por rating
+  const sorted = Array.from(dedup.values()).sort((a, b) => {
+    const scoreA = scoreRow(a, terms);
+    const scoreB = scoreRow(b, terms);
+    if (scoreB !== scoreA) return scoreB - scoreA;
+    const ratingA = (a.five_star_rating_published as number) ?? 0;
+    const ratingB = (b.five_star_rating_published as number) ?? 0;
+    return ratingB - ratingA;
+  });
+
+  const results = sorted.map((row) => {
     const r = row as Record<string, unknown>;
     const questions = r.questions as Array<{ question?: string; selected_option?: string }> | null | undefined;
     const chips = extractChipsFromQuestions(questions);
@@ -151,21 +222,6 @@ export async function GET(request: NextRequest) {
     const city = canonicalizeCity(rawCity, canonicalMap);
     return { ...mapped, ciudad: city ?? undefined };
   });
-
-  if (q.trim()) {
-    const searchTerm = buildSearchQuery(q);
-    const terms = searchTerm.toLowerCase().split(/\s+/).filter(Boolean);
-    if (terms.length > 1) {
-      results = results.filter((r) => {
-        const text = [
-          r.name,
-          r.resena_personal ?? "",
-          r.types?.join(" ") ?? "",
-        ].join(" ").toLowerCase();
-        return terms.some((t) => text.includes(t));
-      });
-    }
-  }
 
   return NextResponse.json({ results });
 }

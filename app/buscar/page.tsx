@@ -25,9 +25,9 @@ function formatTipoComidaLabel(tipoComida?: string | null): string {
 const PRECIO_CHIPS = ["Económico", "Precio medio", "Premium"] as const;
 const AMBIENTE_CHIPS = ["Tranquilo", "Movido", "Ideal para trabajar", "Romántico", "Familiar"] as const;
 const TIPO_COMIDA_CHIPS = ["Desayuno", "Brunch", "Almuerzo", "Merienda", "Cena", "Café"] as const;
+const CALIFICACION_CHIPS = ["4.5+", "4.0+", "3.5+"] as const;
 const ESPACIO_CHIPS = ["Salón", "Terraza", "Vereda", "Barra", "Jardín", "Patio", "Comedor", "Interior"] as const;
 
-/** Etnia/cocina: filtro fijo (comida según etnia). */
 const ETNIA_CHIPS = [
   "Japonesa",
   "Americana",
@@ -127,7 +127,6 @@ const ESPACIO_TYPES: Record<string, string[]> = {
   Interior: [],
 };
 
-// Cocina/etnia: chips dinámicos según resultados. Keywords para detectar cada cocina en nombre/tipos.
 const COCINA_KEYWORDS: Record<string, string[]> = {
   Japonesa: ["japonés", "japonesa", "japanese", "sushi", "ramen", "sashimi", "nikkei", "tempura"],
   China: ["chino", "china", "chinese", "wok", "dim sum", "cantonesa", "sichuan"],
@@ -145,7 +144,6 @@ const COCINA_KEYWORDS: Record<string, string[]> = {
   Vegana: ["vegano", "vegana", "vegan", "plant based", "vegetariano"],
 };
 
-/** Búsqueda sobre un producto/plato específico (helado, pizza, sushi): no mostrar AMBIENTE ni TIPO DE COMIDA. */
 function isProductOrDishSpecific(searchQuery: string): boolean {
   const q = searchQuery.trim().toLowerCase();
   const terms = [
@@ -162,7 +160,6 @@ function isProductOrDishSpecific(searchQuery: string): boolean {
   });
 }
 
-/** Búsqueda que ya especifica cocina/etnia (sushi, comida china): no mostrar filtro ETNIA/COCINA. */
 function isCuisineSpecific(searchQuery: string): boolean {
   const q = searchQuery.trim().toLowerCase();
   const terms = [
@@ -180,11 +177,12 @@ function isCuisineSpecific(searchQuery: string): boolean {
 
 type FilterState = {
   precio: (typeof PRECIO_CHIPS)[number] | null;
-  ambiente: (typeof AMBIENTE_CHIPS)[number][];
-  tipoComida: (typeof TIPO_COMIDA_CHIPS)[number][];
-  etnia: (typeof ETNIA_CHIPS)[number][];
-  espacio: (typeof ESPACIO_CHIPS)[number][];
+  ambiente: string[];
+  tipoComida: string[];
+  etnia: string[];
+  espacio: string[];
   cocina: string[];
+  calificacion: (typeof CALIFICACION_CHIPS)[number] | null;
 };
 
 function getPlaceSearchText(place: PlaceResult): string {
@@ -212,14 +210,16 @@ function placeMatchesAmbiente(place: PlaceResult, chip: (typeof AMBIENTE_CHIPS)[
   return keywords.some((k) => text.includes(k));
 }
 
-function placeMatchesTipoComida(place: PlaceResult, chip: (typeof TIPO_COMIDA_CHIPS)[number]): boolean {
+function placeMatchesTipoComida(place: PlaceResult, chip: string): boolean {
   const text = getPlaceSearchText(place);
   const types = (place.types ?? []).map((t) => t.toLowerCase());
-  const keywords = TIPO_COMIDA_KEYWORDS[chip];
-  const typeList = TIPO_COMIDA_TYPES[chip];
+  const normalizedChip = chip.trim().toLowerCase();
+  const directTypeMatch = types.some((t) => t.replace(/_/g, " ").includes(normalizedChip));
+  const keywords = TIPO_COMIDA_KEYWORDS[chip as keyof typeof TIPO_COMIDA_KEYWORDS] ?? [];
+  const typeList = TIPO_COMIDA_TYPES[chip as keyof typeof TIPO_COMIDA_TYPES] ?? [];
   const matchKw = keywords.some((k) => text.includes(k));
   const matchType = typeList.some((t) => types.some((pt) => pt.includes(t) || t.includes(pt)));
-  return matchKw || matchType;
+  return directTypeMatch || matchKw || matchType;
 }
 
 function placeMatchesEspacio(place: PlaceResult, chip: (typeof ESPACIO_CHIPS)[number]): boolean {
@@ -249,7 +249,6 @@ function placeMatchesEtnia(place: PlaceResult, chip: (typeof ETNIA_CHIPS)[number
   return matchKw || matchType;
 }
 
-/** Igual que placeMatchesEtnia pero para PlaceCard (Abiertos ahora / recomendaciones por zona). */
 function placeCardMatchesEtnia(place: PlaceCard, chip: (typeof ETNIA_CHIPS)[number]): boolean {
   const text = [(place.name ?? ""), place.vicinity ?? ""].join(" ").toLowerCase();
   const types = (place.types ?? []).map((t) => t.toLowerCase());
@@ -260,7 +259,6 @@ function placeCardMatchesEtnia(place: PlaceCard, chip: (typeof ETNIA_CHIPS)[numb
   return matchKw || matchType;
 }
 
-/** Cocinas que aparecen en los resultados (solo labels que tienen al menos un lugar). */
 function getCocinaChipsFromResults(places: PlaceResult[]): string[] {
   return Object.keys(COCINA_KEYWORDS).filter((label) =>
     places.some((p) => placeMatchesCocina(p, label))
@@ -289,6 +287,10 @@ function applyFilters(
   filters: FilterState
 ): PlaceResult[] {
   return places.filter((p) => {
+    if (filters.calificacion) {
+      const minRating = Number.parseFloat(filters.calificacion.replace("+", ""));
+      if ((p.rating ?? 0) < minRating) return false;
+    }
     if (filters.precio) {
       const withPrice = places.filter((x) => x.price_level != null && !Number.isNaN(x.price_level));
       const avg = withPrice.length ? withPrice.reduce((s, x) => s + (x.price_level ?? 0), 0) / withPrice.length : 0;
@@ -319,9 +321,8 @@ function applyFilters(
   });
 }
 
-/** Distancia en metros entre dos puntos (fórmula de Haversine). */
 function distanceM(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371e3; // radio Tierra en metros
+  const R = 6371e3;
   const φ1 = (lat1 * Math.PI) / 180;
   const φ2 = (lat2 * Math.PI) / 180;
   const Δφ = ((lat2 - lat1) * Math.PI) / 180;
@@ -332,7 +333,6 @@ function distanceM(lat1: number, lng1: number, lat2: number, lng2: number): numb
   return R * c;
 }
 
-/** Puntuación de similitud con la búsqueda: mayor = más relevante. */
 function relevanceScore(place: PlaceResult, searchQuery: string): number {
   const q = searchQuery.trim().toLowerCase();
   if (!q) return 0;
@@ -344,7 +344,6 @@ function relevanceScore(place: PlaceResult, searchQuery: string): number {
   return 0;
 }
 
-/** Ordena resultados por: similitud a la búsqueda, puntuación, cercanía. */
 function sortSearchResults(
   results: PlaceResult[],
   searchQuery: string,
@@ -362,21 +361,11 @@ function sortSearchResults(
 
     const distA =
       userCoords && a.geometry?.location
-        ? distanceM(
-            userCoords.lat,
-            userCoords.lng,
-            a.geometry.location.lat,
-            a.geometry.location.lng
-          )
+        ? distanceM(userCoords.lat, userCoords.lng, a.geometry.location.lat, a.geometry.location.lng)
         : Infinity;
     const distB =
       userCoords && b.geometry?.location
-        ? distanceM(
-            userCoords.lat,
-            userCoords.lng,
-            b.geometry.location.lat,
-            b.geometry.location.lng
-          )
+        ? distanceM(userCoords.lat, userCoords.lng, b.geometry.location.lat, b.geometry.location.lng)
         : Infinity;
     return distA - distB;
   });
@@ -391,7 +380,6 @@ type PlaceCard = {
   type: string;
   types?: string[];
   photo_reference?: string | null;
-  /** URL de la foto generada en servidor (prioritaria para que cargue bien). */
   photo_url?: string | null;
   distance_m?: number | null;
   geometry?: { location: { lat: number; lng: number } };
@@ -414,6 +402,7 @@ export default function BuscarPage() {
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [ciudades, setCiudades] = useState<string[]>([]);
   const [ciudadSelected, setCiudadSelected] = useState<string>("");
+  const [detectedCity, setDetectedCity] = useState<string>("");
   const [paisSelected, setPaisSelected] = useState<string>("");
   const [chipsByPlaceId, setChipsByPlaceId] = useState<Record<string, ChipItem[]>>({});
 
@@ -424,6 +413,7 @@ export default function BuscarPage() {
     etnia: [],
     espacio: [],
     cocina: [],
+    calificacion: null,
   });
 
   const filteredResults = useMemo(
@@ -431,48 +421,46 @@ export default function BuscarPage() {
     [results, filterState]
   );
 
-  /** En "Recomendaciones por tu zona" aplicamos solo filtro Etnia (tenemos types en PlaceCard). */
   const filteredPlacesForAbiertos = useMemo(() => {
-    if (filterState.etnia.length === 0) return places;
-    return places.filter((p) => filterState.etnia.some((chip) => placeCardMatchesEtnia(p, chip)));
-  }, [places, filterState.etnia]);
+    return places.filter((p) => {
+      if (filterState.calificacion) {
+        const minRating = Number.parseFloat(filterState.calificacion.replace("+", ""));
+        if ((p.rating ?? 0) < minRating) return false;
+      }
+      if (filterState.tipoComida.length > 0) {
+        const tipo = formatTipoComidaLabel(p.type).toLowerCase();
+        const matchTipo = filterState.tipoComida.some((chip) => tipo.includes(chip.toLowerCase()));
+        if (!matchTipo) return false;
+      }
+      return true;
+    });
+  }, [places, filterState.calificacion, filterState.tipoComida]);
 
-  const searchQuery = query.trim().toLowerCase();
-  const availableChips = useMemo(() => {
-    const list = Array.isArray(results) ? results : [];
-    const priceBuckets = computePriceBuckets(list);
-    const precio = PRECIO_CHIPS.filter((c) => (priceBuckets?.get(c)?.size ?? 0) > 0);
-    const ambiente = AMBIENTE_CHIPS.filter((c) =>
-      list.some((p) => placeMatchesAmbiente(p, c))
-    );
-    const tipoComida = TIPO_COMIDA_CHIPS.filter((c) =>
-      list.some((p) => placeMatchesTipoComida(p, c))
-    );
-    const espacio = ESPACIO_CHIPS.filter((c) =>
-      list.some((p) => placeMatchesEspacio(p, c))
-    );
-    const cocinaLabels = getCocinaChipsFromResults(list);
-    const showAmbiente = !isProductOrDishSpecific(searchQuery) && ambiente.length > 0;
-    const showTipoComida = !isProductOrDishSpecific(searchQuery) && tipoComida.length > 0;
-    const showCocina =
-      !isCuisineSpecific(searchQuery) &&
-      cocinaLabels.length >= 2 &&
-      list.length > 0;
-    return {
-      precio,
-      ambiente,
-      tipoComida,
-      espacio,
-      cocina: cocinaLabels,
-      showAmbiente,
-      showTipoComida,
-      showCocina,
-    };
-  }, [results, searchQuery]);
+  const availableChips = useMemo(
+    () => ({ espacio: [] as string[], showCocina: false, cocina: [] as string[] }),
+    []
+  );
+
+  const tipoComidaOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of results) {
+      const v = formatTipoComidaLabel(p.types?.[0]);
+      if (v && v !== "LUGAR") set.add(v);
+    }
+    for (const p of places) {
+      const v = formatTipoComidaLabel(p.type);
+      if (v && v !== "LUGAR") set.add(v);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [results, places]);
 
   const toggleFilter = useCallback(
     (group: keyof FilterState, value: string) => {
       setFilterState((prev) => {
+        if (group === "calificacion") {
+          const next = prev.calificacion === value ? null : (value as FilterState["calificacion"]);
+          return { ...prev, calificacion: next };
+        }
         if (group === "precio") {
           const next = prev.precio === value ? null : (value as FilterState["precio"]);
           return { ...prev, precio: next };
@@ -489,6 +477,7 @@ export default function BuscarPage() {
 
   const clearFilter = useCallback((group: keyof FilterState) => {
     setFilterState((prev) => {
+      if (group === "calificacion") return { ...prev, calificacion: null };
       if (group === "precio") return { ...prev, precio: null };
       const key = group as "ambiente" | "tipoComida" | "etnia" | "espacio" | "cocina";
       return { ...prev, [key]: [] };
@@ -497,7 +486,7 @@ export default function BuscarPage() {
   }, []);
 
   const [openDropdown, setOpenDropdown] = useState<
-    "precio" | "ambiente" | "tipoComida" | "etnia" | "espacio" | "cocina" | null
+    "precio" | "ambiente" | "tipoComida" | "etnia" | "espacio" | "cocina" | "calificacion" | "ciudad" | null
   >(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -521,6 +510,7 @@ export default function BuscarPage() {
       .catch(() => setCiudades([]));
   }, [paisSelected]);
 
+  // Detectar ubicación del usuario y guardar coords
   const locationForCityAttempted = useRef(false);
   useEffect(() => {
     if (locationForCityAttempted.current || typeof navigator === "undefined" || !navigator.geolocation) return;
@@ -529,40 +519,31 @@ export default function BuscarPage() {
       (pos) => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
+        // Guardar coords para filtrar recomendaciones por distancia
+        setUserCoords({ lat, lng });
         fetch(`/api/geocode/city?lat=${lat}&lng=${lng}`)
           .then((r) => r.json())
           .then((data: { city?: string | null }) => {
             const resolved = (data.city ?? "").trim();
             if (!resolved) return;
-            setCiudades((list) => {
-              if (list.length === 0) return list;
-              const exact = list.find((c) => c.trim() === resolved);
-              if (exact !== undefined) {
-                setCiudadSelected((prev) => (prev === "" ? exact : prev));
-                return list;
-              }
-              const normResolved = resolved.toLowerCase();
-              const match = list.find(
-                (c) => {
-                  const cTrim = c.trim();
-                  const cNorm = cTrim.toLowerCase();
-                  return cTrim === resolved || cNorm === normResolved || cNorm.includes(normResolved) || normResolved.includes(cNorm);
-                }
-              );
-              if (match !== undefined) {
-                setCiudadSelected((prev) => (prev === "" ? match : prev));
-              }
-              return list;
-            });
+            setDetectedCity(resolved);
           })
           .catch(() => {});
       },
-      () => {},
+      () => { setLocationDenied(true); },
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
     );
   }, []);
 
-  // Chips vienen en la respuesta de /api/lugares (search y recommendations); se actualizan al setear results/places
+  useEffect(() => {
+    if (!detectedCity.trim() || ciudades.length === 0) return;
+    const normDetected = detectedCity.trim().toLowerCase();
+    const match =
+      ciudades.find((c) => c.trim().toLowerCase() === normDetected) ??
+      ciudades.find((c) => c.trim().toLowerCase().includes(normDetected) || normDetected.includes(c.trim().toLowerCase()));
+    if (!match) return;
+    setCiudadSelected((prev) => (prev.trim() === "" ? match : prev));
+  }, [detectedCity, ciudades]);
 
   useEffect(() => {
     if (openDropdown == null) return;
@@ -575,13 +556,23 @@ export default function BuscarPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [openDropdown]);
 
-  const loadRecommendations = useCallback(async (pais: string, ciudad: string) => {
+  // Cargar recomendaciones pasando coords cuando no hay ciudad seleccionada
+  const loadRecommendations = useCallback(async (
+    pais: string,
+    ciudad: string,
+    coords: { lat: number; lng: number } | null
+  ) => {
     setPlacesLoading(true);
     try {
       const params = new URLSearchParams();
       if (pais.trim()) params.set("pais", pais);
       if (ciudad.trim()) params.set("ciudad", ciudad.trim());
-      const res = await fetch(`/api/lugares/recommendations?${params.toString()}`);
+      // Si no hay ciudad seleccionada, pasar coords para filtrar por 5km
+      if (!ciudad.trim() && coords) {
+        params.set("lat", String(coords.lat));
+        params.set("lng", String(coords.lng));
+      }
+      const res = await fetch(`/api/lugares/recommendations?${params.toString()}`, { cache: "no-store" });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       const list = (data.results ?? []) as (PlaceCard & { chips?: ChipItem[] })[];
@@ -600,8 +591,8 @@ export default function BuscarPage() {
   }, []);
 
   useEffect(() => {
-    loadRecommendations(paisSelected, ciudadSelected);
-  }, [loadRecommendations, paisSelected, ciudadSelected]);
+    loadRecommendations(paisSelected, ciudadSelected, userCoords);
+  }, [loadRecommendations, paisSelected, ciudadSelected, userCoords]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -644,7 +635,7 @@ export default function BuscarPage() {
         ),
       }));
       setHasActiveSearch(true);
-      setFilterState({ precio: null, ambiente: [], tipoComida: [], etnia: [], espacio: [], cocina: [] });
+      setFilterState({ precio: null, ambiente: [], tipoComida: [], etnia: [], espacio: [], cocina: [], calificacion: null });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error en la búsqueda");
       setResults([]);
@@ -659,7 +650,7 @@ export default function BuscarPage() {
     setResults([]);
     setHasActiveSearch(false);
     setError(null);
-    setFilterState({ precio: null, ambiente: [], tipoComida: [], etnia: [], espacio: [], cocina: [] });
+    setFilterState({ precio: null, ambiente: [], tipoComida: [], etnia: [], espacio: [], cocina: [], calificacion: null });
   }, []);
 
   return (
@@ -677,120 +668,42 @@ export default function BuscarPage() {
         </div>
       )}
       <div className="mx-auto max-w-[1000px] px-4 pt-4">
-      {error && (
-        <div className="font-manrope mt-4 rounded-2xl border border-amber-200/80 bg-amber-50/95 p-4 text-[var(--text-primary)]" role="alert">
-          <p className="font-medium text-amber-900">Error en la búsqueda</p>
-          <p className="mt-1 text-sm text-[var(--text-primary)]/80">
-            {/facturación|billing|console\.cloud\.google/i.test(error) ? (
-              <>
-                Para usar la búsqueda, activá la facturación en tu proyecto de Google Cloud (incluye crédito gratis mensual).{" "}
-                <a
-                  href="https://console.cloud.google.com/project/_/billing/enable"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline hover:no-underline"
-                >
-                  Activar facturación →
-                </a>
-              </>
-            ) : (
-              error
-            )}
-          </p>
-        </div>
-      )}
+        {error && (
+          <div className="font-manrope mt-4 rounded-2xl border border-amber-200/80 bg-amber-50/95 p-4 text-[var(--text-primary)]" role="alert">
+            <p className="font-medium text-amber-900">Error en la búsqueda</p>
+            <p className="mt-1 text-sm text-[var(--text-primary)]/80">
+              {/facturación|billing|console\.cloud\.google/i.test(error) ? (
+                <>
+                  Para usar la búsqueda, activá la facturación en tu proyecto de Google Cloud (incluye crédito gratis mensual).{" "}
+                  <a
+                    href="https://console.cloud.google.com/project/_/billing/enable"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:no-underline"
+                  >
+                    Activar facturación →
+                  </a>
+                </>
+              ) : (
+                error
+              )}
+            </p>
+          </div>
+        )}
 
-      {/* Recomendaciones por tu zona: selector ciudad + título + filtros chips + cards */}
-      {results.length === 0 && (
-        <div className="mt-6 w-full md:mt-10">
-          {placesLoading ? (
-            <p className="font-manrope text-[#152f33]/80">Cargando recomendaciones…</p>
-          ) : (
-            <div ref={dropdownRef} className="flex flex-col gap-5">
-                <div className="flex flex-wrap items-center gap-3">
-                  <span className="font-manrope text-sm font-medium text-[#152f33]/80">Ciudad:</span>
-                  <select
-                    value={ciudadSelected}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      setCiudadSelected(next);
-                    }}
-                    className="font-manrope rounded-[1000px] border border-[#152f33]/20 bg-white px-4 py-2 text-base text-[#152f33] focus:outline-none focus:ring-2 focus:ring-[#E45AFF]/40"
-                    aria-label="Seleccionar ciudad"
-                  >
-                    <option value="">Todas</option>
-                    {ciudades.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-                <p className="font-heading text-[28px] font-medium leading-normal tracking-[-1.12px] text-[#152f33] md:text-[40px] md:tracking-[-1.6px]">
-                  {ciudadSelected.trim()
-                    ? `Recomendaciones en ${ciudadSelected.trim()}`
-                    : "Recomendaciones por tu zona"}
-                </p>
-                {filteredPlacesForAbiertos.length > 0 ? (
-                  <>
-                    <div className="flex flex-wrap gap-3">
-                <div className="relative shrink-0">
-                  <div
-                    role="group"
-                    className={`flex items-center rounded-[1000px] overflow-hidden ${
-                      filterState.ambiente.length > 0
-                        ? "border border-[#191E1F] text-[#191E1F] bg-[linear-gradient(180deg,rgba(108,130,133,0.12)_0%,rgba(25,30,31,0.12)_100%)]"
-                        : "border border-[#f7f3f1] bg-white"
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setOpenDropdown((d) => (d === "ambiente" ? null : "ambiente"))}
-                      className={`flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5 text-left font-manrope text-base font-medium leading-normal tracking-[-0.64px] ${
-                        filterState.ambiente.length > 0 ? "text-[#191E1F] hover:bg-black/5" : "text-[#152f33] hover:bg-[#fafafa]"
-                      }`}
-                    >
-                      {filterState.ambiente.length > 0 ? (
-                        filterState.ambiente.join(", ")
-                      ) : (
-                        <>
-                          Ambiente
-                          <svg className="h-6 w-6 shrink-0 text-[#152f33]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </>
-                      )}
-                    </button>
-                    {filterState.ambiente.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => clearFilter("ambiente")}
-                        className="flex h-8 w-8 shrink-0 items-center justify-center text-[#191E1F] hover:bg-black/10"
-                        aria-label="Quitar filtro Ambiente"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M18 6L6 18M6 6l12 12" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                  {openDropdown === "ambiente" && (
-                    <div className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
-                      {AMBIENTE_CHIPS.map((chip) => {
-                        const active = filterState.ambiente.includes(chip);
-                        return (
-                          <button
-                            key={chip}
-                            type="button"
-                            onClick={() => toggleFilter("ambiente", chip)}
-                            className={`font-manrope flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition hover:bg-[#152f33]/5 ${active ? "bg-[var(--btn-primary-from)]/15 text-[var(--btn-primary-from)] font-medium" : "text-[#152f33]"}`}
-                          >
-                            {active && <span className="text-[var(--btn-primary-from)]">✓</span>}
-                            {chip}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+        {/* Resultados de búsqueda: se muestran cuando hay resultados, tapan las recomendaciones */}
+        {results.length > 0 && (
+          <div ref={dropdownRef} className="mt-6 w-full md:mt-10">
+            <div className="flex flex-col gap-5">
+              <p className="font-heading text-[28px] font-medium leading-normal tracking-[-1.12px] text-[#152f33] md:text-[40px] md:tracking-[-1.6px]">
+                Resultados de búsqueda
+                {filteredResults.length !== results.length && (
+                  <span className="font-manrope ml-2 text-base font-normal text-[#152f33]/70 md:text-lg">
+                    ({filteredResults.length} de {results.length})
+                  </span>
+                )}
+              </p>
+              <div className="flex flex-wrap gap-3">
                 <div className="relative shrink-0">
                   <div
                     role="group"
@@ -807,23 +720,14 @@ export default function BuscarPage() {
                         filterState.tipoComida.length > 0 ? "text-[#191E1F] hover:bg-black/5" : "text-[#152f33] hover:bg-[#fafafa]"
                       }`}
                     >
-                      {filterState.tipoComida.length > 0 ? (
-                        filterState.tipoComida.join(", ")
-                      ) : (
-                        <>
-                          Comida
-                          <svg className="h-6 w-6 shrink-0 text-[#152f33]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </>
-                      )}
+                      {filterState.tipoComida.length > 0 ? filterState.tipoComida.join(", ") : "Tipo de comida"}
                     </button>
                     {filterState.tipoComida.length > 0 && (
                       <button
                         type="button"
                         onClick={() => clearFilter("tipoComida")}
                         className="flex h-8 w-8 shrink-0 items-center justify-center text-[#191E1F] hover:bg-black/10"
-                        aria-label="Quitar filtro Comida"
+                        aria-label="Quitar filtro Tipo de comida"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M18 6L6 18M6 6l12 12" />
@@ -832,8 +736,8 @@ export default function BuscarPage() {
                     )}
                   </div>
                   {openDropdown === "tipoComida" && (
-                    <div className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
-                      {TIPO_COMIDA_CHIPS.map((chip) => {
+                    <div className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
+                      {tipoComidaOptions.map((chip) => {
                         const active = filterState.tipoComida.includes(chip);
                         return (
                           <button
@@ -854,35 +758,26 @@ export default function BuscarPage() {
                   <div
                     role="group"
                     className={`flex items-center rounded-[1000px] overflow-hidden ${
-                      filterState.precio
+                      filterState.calificacion
                         ? "border border-[#191E1F] text-[#191E1F] bg-[linear-gradient(180deg,rgba(108,130,133,0.12)_0%,rgba(25,30,31,0.12)_100%)]"
                         : "border border-[#f7f3f1] bg-white"
                     }`}
                   >
                     <button
                       type="button"
-                      onClick={() => setOpenDropdown((d) => (d === "precio" ? null : "precio"))}
+                      onClick={() => setOpenDropdown((d) => (d === "calificacion" ? null : "calificacion"))}
                       className={`flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5 text-left font-manrope text-base font-medium leading-normal tracking-[-0.64px] ${
-                        filterState.precio ? "text-[#191E1F] hover:bg-black/5" : "text-[#152f33] hover:bg-[#fafafa]"
+                        filterState.calificacion ? "text-[#191E1F] hover:bg-black/5" : "text-[#152f33] hover:bg-[#fafafa]"
                       }`}
                     >
-                      {filterState.precio ? (
-                        filterState.precio
-                      ) : (
-                        <>
-                          Precio
-                          <svg className="h-6 w-6 shrink-0 text-[#152f33]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </>
-                      )}
+                      {filterState.calificacion ?? "Calificación"}
                     </button>
-                    {filterState.precio && (
+                    {filterState.calificacion && (
                       <button
                         type="button"
-                        onClick={() => clearFilter("precio")}
+                        onClick={() => clearFilter("calificacion")}
                         className="flex h-8 w-8 shrink-0 items-center justify-center text-[#191E1F] hover:bg-black/10"
-                        aria-label="Quitar filtro Precio"
+                        aria-label="Quitar filtro Calificación"
                       >
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M18 6L6 18M6 6l12 12" />
@@ -890,17 +785,18 @@ export default function BuscarPage() {
                       </button>
                     )}
                   </div>
-                  {openDropdown === "precio" && (
-                    <div className="absolute left-0 top-full z-50 mt-1 min-w-[180px] rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
-                      {PRECIO_CHIPS.map((chip) => {
-                        const active = filterState.precio === chip;
+                  {openDropdown === "calificacion" && (
+                    <div className="absolute left-0 top-full z-50 mt-1 min-w-[140px] rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
+                      {CALIFICACION_CHIPS.map((chip) => {
+                        const active = filterState.calificacion === chip;
                         return (
                           <button
                             key={chip}
                             type="button"
-                            onClick={() => toggleFilter("precio", chip)}
-                            className={`font-manrope w-full px-4 py-2 text-left text-sm transition hover:bg-[#152f33]/5 ${active ? "bg-[var(--btn-primary-from)]/15 text-[var(--btn-primary-from)] font-medium" : "text-[#152f33]"}`}
+                            onClick={() => toggleFilter("calificacion", chip)}
+                            className={`font-manrope flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition hover:bg-[#152f33]/5 ${active ? "bg-[var(--btn-primary-from)]/15 text-[var(--btn-primary-from)] font-medium" : "text-[#152f33]"}`}
                           >
+                            {active && <span className="text-[var(--btn-primary-from)]">✓</span>}
                             {chip}
                           </button>
                         );
@@ -908,583 +804,313 @@ export default function BuscarPage() {
                     </div>
                   )}
                 </div>
-                {/* Etnia: comida según etnia */}
-                <div className="relative shrink-0">
-                  <div
-                    role="group"
-                    className={`flex items-center rounded-[1000px] overflow-hidden ${
-                      filterState.etnia.length > 0
-? "border border-[#191E1F] text-[#191E1F] bg-[linear-gradient(180deg,rgba(108,130,133,0.12)_0%,rgba(25,30,31,0.12)_100%)]"
-                    : "border border-[#f7f3f1] bg-white"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setOpenDropdown((d) => (d === "etnia" ? null : "etnia"))}
-                    className={`flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5 text-left font-manrope text-base font-medium leading-normal tracking-[-0.64px] ${
-                      filterState.etnia.length > 0 ? "text-[#191E1F] hover:bg-black/5" : "text-[#152f33] hover:bg-[#fafafa]"
-                    }`}
-                  >
-                    {filterState.etnia.length > 0 ? (
-                      filterState.etnia.join(", ")
-                    ) : (
-                      <>
-                        Etnia
-                        <svg className="h-6 w-6 shrink-0 text-[#152f33]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </>
-                    )}
-                  </button>
-                  {filterState.etnia.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => clearFilter("etnia")}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center text-[#191E1F] hover:bg-black/10"
-                      aria-label="Quitar filtro Etnia"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 6L6 18M6 6l12 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-                {openDropdown === "etnia" && (
-                  <div className="absolute left-0 top-full z-50 mt-1 max-h-[280px] min-w-[180px] overflow-y-auto rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
-                    {ETNIA_CHIPS.map((chip) => {
-                      const active = filterState.etnia.includes(chip);
-                      return (
-                        <button
-                          key={chip}
-                          type="button"
-                          onClick={() => toggleFilter("etnia", chip)}
-                          className={`font-manrope flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition hover:bg-[#152f33]/5 ${active ? "bg-[var(--btn-primary-from)]/15 text-[var(--btn-primary-from)] font-medium" : "text-[#152f33]"}`}
-                        >
-                          {active && <span className="text-[var(--btn-primary-from)]">✓</span>}
-                          {chip}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-4 md:pb-2">
-                {filteredPlacesForAbiertos.map((place) => {
-                  return (
-                    <BuscarCard
-                      key={place.place_id}
-                      placeId={place.place_id}
-                      name={place.name}
-                      category={formatTipoComidaLabel(place.type)}
-                      ciudad={place.ciudad}
-                      pais={place.pais}
-                      rating={place.rating}
-                      reviewText={place.resena_personal}
-                      reviewDate={place.fecha_resena}
-                      photoUrl={place.photo_url ?? undefined}
-                      photoReference={place.photo_reference}
-                      lat={place.geometry?.location?.lat}
-                      lng={place.geometry?.location?.lng}
-                      google_maps_url={place.google_maps_url ?? "#"}
-                      chips={chipsByPlaceId[place.place_id] ?? []}
-                    />
-                  );
-                })}
-              </div>
-            </>
-          ) : (
-            <p className="font-manrope text-[#152f33]/80">
-              No hay recomendaciones para tu zona en este momento.
-            </p>
-          )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Resultados de búsqueda (Figma 38:469): título + filtros chips + cards */}
-      {results.length > 0 && (
-        <div ref={dropdownRef} className="mt-6 w-full md:mt-10">
-          <div className="flex flex-col gap-5">
-            <p className="font-heading text-[28px] font-medium leading-normal tracking-[-1.12px] text-[#152f33] md:text-[40px] md:tracking-[-1.6px]">
-              Resultados de búsqueda
-              {filteredResults.length !== results.length && (
-                <span className="font-manrope ml-2 text-base font-normal text-[#152f33]/70 md:text-lg">
-                  ({filteredResults.length} de {results.length})
-                </span>
-              )}
-            </p>
-            {/* Filtros como chips (Figma 45:447): Ambiente, Comida, Precio */}
-            <div className="flex flex-wrap gap-3">
-              <div className="relative shrink-0">
-                <div
-                  role="group"
-                  className={`flex items-center rounded-[1000px] overflow-hidden ${
-                    filterState.ambiente.length > 0
-? "border border-[#191E1F] text-[#191E1F] bg-[linear-gradient(180deg,rgba(108,130,133,0.12)_0%,rgba(25,30,31,0.12)_100%)]"
-                    : "border border-[#f7f3f1] bg-white"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setOpenDropdown((d) => (d === "ambiente" ? null : "ambiente"))}
-                    className={`flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5 text-left font-manrope text-base font-medium leading-normal tracking-[-0.64px] ${
-                      filterState.ambiente.length > 0 ? "text-[#191E1F] hover:bg-black/5" : "text-[#152f33] hover:bg-[#fafafa]"
-                    }`}
-                  >
-                    {filterState.ambiente.length > 0 ? (
-                      filterState.ambiente.join(", ")
-                    ) : (
-                      <>
-                        Ambiente
-                        <svg className="h-6 w-6 shrink-0 text-[#152f33]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </>
-                    )}
-                  </button>
-                  {filterState.ambiente.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => clearFilter("ambiente")}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center text-[#191E1F] hover:bg-black/10"
-                      aria-label="Quitar filtro Ambiente"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 6L6 18M6 6l12 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-                {openDropdown === "ambiente" && (
-                  <div className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
-                    {AMBIENTE_CHIPS.map((chip) => {
-                      const active = filterState.ambiente.includes(chip);
-                      return (
-                        <button
-                          key={chip}
-                          type="button"
-                          onClick={() => toggleFilter("ambiente", chip)}
-                          className={`font-manrope flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition hover:bg-[#152f33]/5 ${active ? "bg-[var(--btn-primary-from)]/15 text-[var(--btn-primary-from)] font-medium" : "text-[#152f33]"}`}
-                        >
-                          {active && <span className="text-[var(--btn-primary-from)]">✓</span>}
-                          {chip}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              <div className="relative shrink-0">
-                <div
-                  role="group"
-                  className={`flex items-center rounded-[1000px] overflow-hidden ${
-                    filterState.tipoComida.length > 0
-? "border border-[#191E1F] text-[#191E1F] bg-[linear-gradient(180deg,rgba(108,130,133,0.12)_0%,rgba(25,30,31,0.12)_100%)]"
-                    : "border border-[#f7f3f1] bg-white"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setOpenDropdown((d) => (d === "tipoComida" ? null : "tipoComida"))}
-                    className={`flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5 text-left font-manrope text-base font-medium leading-normal tracking-[-0.64px] ${
-                      filterState.tipoComida.length > 0 ? "text-[#191E1F] hover:bg-black/5" : "text-[#152f33] hover:bg-[#fafafa]"
-                    }`}
-                  >
-                    {filterState.tipoComida.length > 0 ? (
-                      filterState.tipoComida.join(", ")
-                    ) : (
-                      <>
-                        Comida
-                        <svg className="h-6 w-6 shrink-0 text-[#152f33]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </>
-                    )}
-                  </button>
-                  {filterState.tipoComida.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => clearFilter("tipoComida")}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center text-[#191E1F] hover:bg-black/10"
-                      aria-label="Quitar filtro Comida"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 6L6 18M6 6l12 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-                {openDropdown === "tipoComida" && (
-                  <div className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
-                    {TIPO_COMIDA_CHIPS.map((chip) => {
-                      const active = filterState.tipoComida.includes(chip);
-                      return (
-                        <button
-                          key={chip}
-                          type="button"
-                          onClick={() => toggleFilter("tipoComida", chip)}
-                          className={`font-manrope flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition hover:bg-[#152f33]/5 ${active ? "bg-[var(--btn-primary-from)]/15 text-[var(--btn-primary-from)] font-medium" : "text-[#152f33]"}`}
-                        >
-                          {active && <span className="text-[var(--btn-primary-from)]">✓</span>}
-                          {chip}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              <div className="relative shrink-0">
-                <div
-                  role="group"
-                  className={`flex items-center rounded-[1000px] overflow-hidden ${
-                    filterState.precio
-? "border border-[#191E1F] text-[#191E1F] bg-[linear-gradient(180deg,rgba(108,130,133,0.12)_0%,rgba(25,30,31,0.12)_100%)]"
-                    : "border border-[#f7f3f1] bg-white"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setOpenDropdown((d) => (d === "precio" ? null : "precio"))}
-                    className={`flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5 text-left font-manrope text-base font-medium leading-normal tracking-[-0.64px] ${
-                      filterState.precio ? "text-[#191E1F] hover:bg-black/5" : "text-[#152f33] hover:bg-[#fafafa]"
-                    }`}
-                  >
-                    {filterState.precio ? (
-                      filterState.precio
-                    ) : (
-                      <>
-                        Precio
-                        <svg className="h-6 w-6 shrink-0 text-[#152f33]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </>
-                    )}
-                  </button>
-                  {filterState.precio && (
-                    <button
-                      type="button"
-                      onClick={() => clearFilter("precio")}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center text-[#191E1F] hover:bg-black/10"
-                      aria-label="Quitar filtro Precio"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 6L6 18M6 6l12 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-                {openDropdown === "precio" && (
-                  <div className="absolute left-0 top-full z-50 mt-1 min-w-[180px] rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
-                    {PRECIO_CHIPS.map((chip) => {
-                      const active = filterState.precio === chip;
-                      return (
-                        <button
-                          key={chip}
-                          type="button"
-                          onClick={() => toggleFilter("precio", chip)}
-                          className={`font-manrope w-full px-4 py-2 text-left text-sm transition hover:bg-[#152f33]/5 ${active ? "bg-[var(--btn-primary-from)]/15 text-[var(--btn-primary-from)] font-medium" : "text-[#152f33]"}`}
-                        >
-                          {chip}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              {/* Etnia: comida según etnia */}
-              <div className="relative shrink-0">
-                <div
-                  role="group"
-                  className={`flex items-center rounded-[1000px] overflow-hidden ${
-                    filterState.etnia.length > 0
-? "border border-[#191E1F] text-[#191E1F] bg-[linear-gradient(180deg,rgba(108,130,133,0.12)_0%,rgba(25,30,31,0.12)_100%)]"
-                    : "border border-[#f7f3f1] bg-white"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setOpenDropdown((d) => (d === "etnia" ? null : "etnia"))}
-                    className={`flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5 text-left font-manrope text-base font-medium leading-normal tracking-[-0.64px] ${
-                      filterState.etnia.length > 0 ? "text-[#191E1F] hover:bg-black/5" : "text-[#152f33] hover:bg-[#fafafa]"
-                    }`}
-                  >
-                    {filterState.etnia.length > 0 ? (
-                      filterState.etnia.join(", ")
-                    ) : (
-                      <>
-                        Etnia
-                        <svg className="h-6 w-6 shrink-0 text-[#152f33]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
-                      </>
-                    )}
-                  </button>
-                  {filterState.etnia.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => clearFilter("etnia")}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center text-[#191E1F] hover:bg-black/10"
-                      aria-label="Quitar filtro Etnia"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M18 6L6 18M6 6l12 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-                {openDropdown === "etnia" && (
-                  <div className="absolute left-0 top-full z-50 mt-1 max-h-[280px] min-w-[180px] overflow-y-auto rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
-                    {ETNIA_CHIPS.map((chip) => {
-                      const active = filterState.etnia.includes(chip);
-                      return (
-                        <button
-                          key={chip}
-                          type="button"
-                          onClick={() => toggleFilter("etnia", chip)}
-                          className={`font-manrope flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition hover:bg-[#152f33]/5 ${active ? "bg-[var(--btn-primary-from)]/15 text-[var(--btn-primary-from)] font-medium" : "text-[#152f33]"}`}
-                        >
-                          {active && <span className="text-[var(--btn-primary-from)]">✓</span>}
-                          {chip}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              {availableChips.espacio.length > 0 && (
-                <div className="relative shrink-0">
-                  <div
-                    role="group"
-                    className={`flex items-center rounded-[1000px] overflow-hidden ${
-                      filterState.espacio.length > 0
-                        ? "border border-[#191E1F] text-[#191E1F] bg-[linear-gradient(180deg,rgba(108,130,133,0.12)_0%,rgba(25,30,31,0.12)_100%)]"
-                        : "border border-[#f7f3f1] bg-white"
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setOpenDropdown((d) => (d === "espacio" ? null : "espacio"))}
-                      className={`flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5 text-left font-manrope text-base font-medium leading-normal tracking-[-0.64px] ${
-                        filterState.espacio.length > 0 ? "text-[#191E1F] hover:bg-black/5" : "text-[#152f33] hover:bg-[#fafafa]"
-                      }`}
-                    >
-                      {filterState.espacio.length > 0 ? (
-                        filterState.espacio.join(", ")
-                      ) : (
-                        <>
-                          Espacio
-                          <svg className="h-6 w-6 shrink-0 text-[#152f33]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </>
-                      )}
-                    </button>
-                    {filterState.espacio.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => clearFilter("espacio")}
-                        className="flex h-8 w-8 shrink-0 items-center justify-center text-[#191E1F] hover:bg-black/10"
-                        aria-label="Quitar filtro Espacio"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M18 6L6 18M6 6l12 12" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                  {openDropdown === "espacio" && (
-                    <div className="absolute left-0 top-full z-50 mt-1 min-w-[160px] rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
-                      {availableChips.espacio.map((chip) => {
-                        const active = filterState.espacio.includes(chip);
-                        return (
-                          <button
-                            key={chip}
-                            type="button"
-                            onClick={() => toggleFilter("espacio", chip)}
-                            className={`font-manrope flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition hover:bg-[#152f33]/5 ${active ? "bg-[var(--btn-primary-from)]/15 text-[var(--btn-primary-from)] font-medium" : "text-[#152f33]"}`}
-                          >
-                            {active && <span className="text-[var(--btn-primary-from)]">✓</span>}
-                            {chip}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-              {availableChips.showCocina && (
-                <div className="relative shrink-0">
-                  <div
-                    role="group"
-                    className={`flex items-center rounded-[1000px] overflow-hidden ${
-                      filterState.cocina.length > 0
-                        ? "border border-[#191E1F] text-[#191E1F] bg-[linear-gradient(180deg,rgba(108,130,133,0.12)_0%,rgba(25,30,31,0.12)_100%)]"
-                        : "border border-[#f7f3f1] bg-white"
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setOpenDropdown((d) => (d === "cocina" ? null : "cocina"))}
-                      className={`flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5 text-left font-manrope text-base font-medium leading-normal tracking-[-0.64px] ${
-                        filterState.cocina.length > 0 ? "text-[#191E1F] hover:bg-black/5" : "text-[#152f33] hover:bg-[#fafafa]"
-                      }`}
-                    >
-                      {filterState.cocina.length > 0 ? (
-                        filterState.cocina.join(", ")
-                      ) : (
-                        <>
-                          Cocina
-                          <svg className="h-6 w-6 shrink-0 text-[#152f33]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </>
-                      )}
-                    </button>
-                    {filterState.cocina.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => clearFilter("cocina")}
-                        className="flex h-8 w-8 shrink-0 items-center justify-center text-[#191E1F] hover:bg-black/10"
-                        aria-label="Quitar filtro Cocina"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M18 6L6 18M6 6l12 12" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                  {openDropdown === "cocina" && (
-                    <div className="absolute left-0 top-full z-50 mt-1 max-h-[280px] min-w-[180px] overflow-y-auto rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
-                      {availableChips.cocina.map((label) => {
-                        const active = filterState.cocina.includes(label);
-                        return (
-                          <button
-                            key={label}
-                            type="button"
-                            onClick={() => toggleFilter("cocina", label)}
-                            className={`font-manrope flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition hover:bg-[#152f33]/5 ${active ? "bg-[var(--btn-primary-from)]/15 text-[var(--btn-primary-from)] font-medium" : "text-[#152f33]"}`}
-                          >
-                            {active && <span className="text-[var(--btn-primary-from)]">✓</span>}
-                            {label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-4 md:pb-2">
-            {filteredResults.map((place) => {
-              return (
-                <BuscarCard
-                  key={place.place_id}
-                  placeId={place.place_id}
-                  name={place.name}
-                  category={formatTipoComidaLabel(place.types?.[0])}
-                  ciudad={place.ciudad}
-                  pais={place.pais}
-                  rating={place.rating}
-                  reviewText={place.resena_personal}
-                  reviewDate={place.fecha_resena}
-                  photoUrl={place.photoUrl}
-                  photoReference={place.photos?.[0]?.photo_reference}
-                  lat={place.geometry?.location?.lat}
-                  lng={place.geometry?.location?.lng}
-                  google_maps_url={place.google_maps_url ?? "#"}
-                  chips={chipsByPlaceId[place.place_id] ?? []}
-                />
-              );
-            })}
-            </div>
-          </div>
-        </div>
-      )}
-      {!loading && results.length === 0 && query.trim() && !error && (
-        <p className="font-manrope mt-8 text-[#152f33]/70">No se encontraron resultados.</p>
-      )}
-      {results.length > 0 && filteredResults.length === 0 && (
-        <p className="font-manrope mt-4 text-[#152f33]/70">
-          Ningún resultado coincide con los filtros. Probá quitando alguno.
-        </p>
-      )}
-
-      {/* Gradiente inferior (Figma 38:941) */}
-      <div
-        className="pointer-events-none fixed bottom-0 left-0 right-0 z-30 h-[171px]"
-        style={{
-          background: "linear-gradient(to bottom, rgba(255,251,248,0) 0%, #fffbf8 92.14%)",
-        }}
-      />
-
-      {/* Barra de búsqueda fija */}
-      <div className="fixed bottom-[24px] left-1/2 right-4 z-40 w-full max-w-[354px] -translate-x-1/2 px-4 md:bottom-0 md:left-0 md:right-0 md:max-w-none md:translate-x-0 md:bg-[#fffbf8]/90 md:py-4 md:backdrop-blur-sm">
-        <div
-          className="flex w-full items-center justify-between gap-3 px-5 py-2.5 md:max-w-[1000px] md:mx-auto md:px-4"
-          style={{
-            borderRadius: "100px",
-            border: "1px solid #E45AFF",
-            background: "linear-gradient(180deg, #FAFAFA 0%, #FFF 100%)",
-            boxShadow: "2px 2px 12px 0 rgba(228, 90, 255, 0.10)",
-          }}
-        >
-          <div className="relative flex min-h-9 flex-1 items-center overflow-hidden">
-            <input
-              id="buscar-input"
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && search()}
-              className={`relative z-10 min-w-0 flex-1 font-manrope text-base font-medium tracking-[-0.64px] text-[#152f33] placeholder:text-[#152f33]/50 focus:outline-none md:tracking-[-0.72px] ${
-                query.trim() ? "bg-white/90" : "bg-transparent"
-              }`}
-              placeholder={`Buscar  ${ROTATING_PLACEHOLDERS[placeholderIndex]}…`}
-            />
-          </div>
-          <span className="cta-stroke-gradient-animate inline-flex shrink-0 rounded-full p-[1px]">
-            {hasActiveSearch ? (
-              <button
-                type="button"
-                onClick={clearSearch}
-                className="group relative inline-flex overflow-hidden rounded-full bg-gradient-to-b from-[rgba(228,90,255,0.7)] to-[rgba(216,48,249,0.7)] font-manrope font-medium leading-normal text-white tracking-[-0.72px] transition-all duration-300 hover:opacity-90 md:h-12 md:w-12 md:min-w-0"
-                aria-label="Limpiar búsqueda y volver al inicio"
-              >
-                <span className="relative z-10 flex h-10 w-10 items-center justify-center md:h-12 md:w-12">
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 md:h-6 md:w-6">
-                    <path d="M18 6L6 18M6 6l12 12" />
-                  </svg>
-                </span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={search}
-                disabled={loading}
-                className="group relative inline-flex overflow-hidden rounded-full bg-gradient-to-b from-[rgba(228,90,255,0.7)] to-[rgba(216,48,249,0.7)] font-manrope font-medium leading-normal text-white tracking-[-0.72px] transition-all duration-300 disabled:opacity-60 md:gap-2 md:px-6 md:py-3"
-                aria-label="Buscar"
-              >
-                <span
-                  className="absolute inset-x-0 bottom-0 h-full origin-bottom scale-y-0 bg-gradient-to-t from-[rgba(255,255,255,0.18)] via-[rgba(255,200,255,0.08)] to-transparent transition-transform duration-500 ease-in-out group-hover:scale-y-100"
-                  aria-hidden
-                />
-                <span className="relative z-10 flex h-10 w-10 items-center justify-center gap-1 md:h-auto md:w-auto md:min-w-0">
-                  <Image
-                    src="/search-ai-icon@2x.png"
-                    alt=""
-                    width={40}
-                    height={40}
-                    className="h-4 w-4 md:h-5 md:w-5 object-contain mix-blend-lighten"
-                    unoptimized
+                {filteredResults.map((place) => (
+                  <BuscarCard
+                    key={place.place_id}
+                    placeId={place.place_id}
+                    name={place.name}
+                    category={formatTipoComidaLabel(place.types?.[0])}
+                    ciudad={place.ciudad}
+                    pais={place.pais}
+                    rating={place.rating}
+                    reviewText={place.resena_personal}
+                    reviewDate={place.fecha_resena}
+                    photoUrl={place.photoUrl}
+                    photoReference={place.photos?.[0]?.photo_reference}
+                    lat={place.geometry?.location?.lat}
+                    lng={place.geometry?.location?.lng}
+                    google_maps_url={place.google_maps_url ?? "#"}
+                    chips={chipsByPlaceId[place.place_id] ?? []}
                   />
-                  <span className="hidden md:inline md:font-manrope md:text-base md:font-medium md:leading-normal md:tracking-[-0.72px] md:text-lg">Buscar</span>
-                </span>
-              </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!loading && results.length === 0 && query.trim() && !error && (
+          <p className="font-manrope mt-8 text-[#152f33]/70">No se encontraron resultados.</p>
+        )}
+        {results.length > 0 && filteredResults.length === 0 && (
+          <p className="font-manrope mt-4 text-[#152f33]/70">
+            Ningún resultado coincide con los filtros. Probá quitando alguno.
+          </p>
+        )}
+
+        {/* Recomendaciones por zona: solo se muestran cuando NO hay búsqueda activa */}
+        {results.length === 0 && (
+          <div className="mt-6 w-full md:mt-10">
+            {placesLoading ? (
+              <p className="font-manrope text-[#152f33]/80">Cargando recomendaciones…</p>
+            ) : (
+              <div ref={dropdownRef} className="flex flex-col gap-5">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="font-heading text-[28px] font-medium leading-normal tracking-[-1.12px] text-[#152f33] md:text-[40px] md:tracking-[-1.6px]">
+                    Recomendaciones en
+                  </span>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setOpenDropdown((d) => (d === "ciudad" ? null : "ciudad"))}
+                      className="inline-flex items-center gap-3"
+                      aria-label="Seleccionar ciudad"
+                    >
+                      <span className="font-heading text-[28px] font-medium italic leading-normal tracking-[-1.12px] text-[#E45AFF] md:text-[40px] md:tracking-[-1.6px]">
+                        {ciudadSelected.trim() || detectedCity.trim() || "tu zona"}
+                      </span>
+                      <svg
+                        className="h-6 w-6 text-[#152f33] transition-transform duration-200"
+                        style={{ transform: openDropdown === "ciudad" ? "rotate(90deg)" : "rotate(0deg)" }}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        aria-hidden
+                      >
+                        <path d="M9 6L15 12L9 18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                    {openDropdown === "ciudad" && (
+                      <div className="absolute left-0 top-full z-50 mt-2 min-w-[220px] rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCiudadSelected("");
+                            setOpenDropdown(null);
+                          }}
+                          className="font-manrope flex w-full items-center px-4 py-2 text-left text-sm text-[#152f33] transition hover:bg-[#152f33]/5"
+                        >
+                          {detectedCity.trim() || "tu zona"}
+                        </button>
+                        {ciudades.map((c) => (
+                          <button
+                            key={c}
+                            type="button"
+                            onClick={() => {
+                              setCiudadSelected(c);
+                              setOpenDropdown(null);
+                            }}
+                            className={`font-manrope flex w-full items-center px-4 py-2 text-left text-sm transition hover:bg-[#152f33]/5 ${
+                              ciudadSelected === c ? "bg-[var(--btn-primary-from)]/15 text-[var(--btn-primary-from)] font-medium" : "text-[#152f33]"
+                            }`}
+                          >
+                            {c}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {filteredPlacesForAbiertos.length > 0 ? (
+                  <>
+                    <div className="flex flex-wrap gap-3">
+                      <div className="relative shrink-0">
+                        <div
+                          role="group"
+                          className={`flex items-center rounded-[1000px] overflow-hidden ${
+                            filterState.tipoComida.length > 0
+                              ? "border border-[#191E1F] text-[#191E1F] bg-[linear-gradient(180deg,rgba(108,130,133,0.12)_0%,rgba(25,30,31,0.12)_100%)]"
+                              : "border border-[#f7f3f1] bg-white"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setOpenDropdown((d) => (d === "tipoComida" ? null : "tipoComida"))}
+                            className={`flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5 text-left font-manrope text-base font-medium leading-normal tracking-[-0.64px] ${
+                              filterState.tipoComida.length > 0 ? "text-[#191E1F] hover:bg-black/5" : "text-[#152f33] hover:bg-[#fafafa]"
+                            }`}
+                          >
+                            {filterState.tipoComida.length > 0 ? filterState.tipoComida.join(", ") : "Tipo de comida"}
+                          </button>
+                          {filterState.tipoComida.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => clearFilter("tipoComida")}
+                              className="flex h-8 w-8 shrink-0 items-center justify-center text-[#191E1F] hover:bg-black/10"
+                              aria-label="Quitar filtro Tipo de comida"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M18 6L6 18M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        {openDropdown === "tipoComida" && (
+                          <div className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
+                            {tipoComidaOptions.map((chip) => {
+                              const active = filterState.tipoComida.includes(chip);
+                              return (
+                                <button
+                                  key={chip}
+                                  type="button"
+                                  onClick={() => toggleFilter("tipoComida", chip)}
+                                  className={`font-manrope flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition hover:bg-[#152f33]/5 ${active ? "bg-[var(--btn-primary-from)]/15 text-[var(--btn-primary-from)] font-medium" : "text-[#152f33]"}`}
+                                >
+                                  {active && <span className="text-[var(--btn-primary-from)]">✓</span>}
+                                  {chip}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                      <div className="relative shrink-0">
+                        <div
+                          role="group"
+                          className={`flex items-center rounded-[1000px] overflow-hidden ${
+                            filterState.calificacion
+                              ? "border border-[#191E1F] text-[#191E1F] bg-[linear-gradient(180deg,rgba(108,130,133,0.12)_0%,rgba(25,30,31,0.12)_100%)]"
+                              : "border border-[#f7f3f1] bg-white"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setOpenDropdown((d) => (d === "calificacion" ? null : "calificacion"))}
+                            className={`flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5 text-left font-manrope text-base font-medium leading-normal tracking-[-0.64px] ${
+                              filterState.calificacion ? "text-[#191E1F] hover:bg-black/5" : "text-[#152f33] hover:bg-[#fafafa]"
+                            }`}
+                          >
+                            {filterState.calificacion ?? "Calificación"}
+                          </button>
+                          {filterState.calificacion && (
+                            <button
+                              type="button"
+                              onClick={() => clearFilter("calificacion")}
+                              className="flex h-8 w-8 shrink-0 items-center justify-center text-[#191E1F] hover:bg-black/10"
+                              aria-label="Quitar filtro Calificación"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M18 6L6 18M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                        {openDropdown === "calificacion" && (
+                          <div className="absolute left-0 top-full z-50 mt-1 min-w-[140px] rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
+                            {CALIFICACION_CHIPS.map((chip) => {
+                              const active = filterState.calificacion === chip;
+                              return (
+                                <button
+                                  key={chip}
+                                  type="button"
+                                  onClick={() => toggleFilter("calificacion", chip)}
+                                  className={`font-manrope flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition hover:bg-[#152f33]/5 ${active ? "bg-[var(--btn-primary-from)]/15 text-[var(--btn-primary-from)] font-medium" : "text-[#152f33]"}`}
+                                >
+                                  {active && <span className="text-[var(--btn-primary-from)]">✓</span>}
+                                  {chip}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-4 md:pb-2">
+                      {filteredPlacesForAbiertos.map((place) => (
+                        <BuscarCard
+                          key={place.place_id}
+                          placeId={place.place_id}
+                          name={place.name}
+                          category={formatTipoComidaLabel(place.type)}
+                          ciudad={place.ciudad}
+                          pais={place.pais}
+                          rating={place.rating}
+                          reviewText={place.resena_personal}
+                          reviewDate={place.fecha_resena}
+                          photoUrl={place.photo_url ?? undefined}
+                          photoReference={place.photo_reference}
+                          lat={place.geometry?.location?.lat}
+                          lng={place.geometry?.location?.lng}
+                          google_maps_url={place.google_maps_url ?? "#"}
+                          chips={chipsByPlaceId[place.place_id] ?? []}
+                        />
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <p className="font-manrope text-[#152f33]/80">
+                    No hay recomendaciones en {ciudadSelected.trim() || detectedCity.trim() || "tu zona"} en este momento.
+                  </p>
+                )}
+              </div>
             )}
-          </span>
+          </div>
+        )}
+
+        {/* Gradiente inferior */}
+        <div
+          className="pointer-events-none fixed bottom-0 left-0 right-0 z-30 h-[171px]"
+          style={{
+            background: "linear-gradient(to bottom, rgba(255,251,248,0) 0%, #fffbf8 92.14%)",
+          }}
+        />
+
+        {/* Barra de búsqueda fija */}
+        <div className="fixed bottom-[24px] left-1/2 right-4 z-40 w-full max-w-[354px] -translate-x-1/2 px-4 md:bottom-0 md:left-0 md:right-0 md:max-w-none md:translate-x-0 md:bg-[#fffbf8]/90 md:py-4 md:backdrop-blur-sm">
+          <div
+            className="flex w-full items-center justify-between gap-3 px-5 py-2.5 md:max-w-[1000px] md:mx-auto md:px-4"
+            style={{
+              borderRadius: "100px",
+              border: "1px solid #E45AFF",
+              background: "linear-gradient(180deg, #FAFAFA 0%, #FFF 100%)",
+              boxShadow: "2px 2px 12px 0 rgba(228, 90, 255, 0.10)",
+            }}
+          >
+            <div className="relative flex min-h-9 flex-1 items-center overflow-hidden">
+              <input
+                id="buscar-input"
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && search()}
+                className={`relative z-10 min-w-0 flex-1 font-manrope text-base font-medium tracking-[-0.64px] text-[#152f33] placeholder:text-[#152f33]/50 focus:outline-none md:tracking-[-0.72px] ${
+                  query.trim() ? "bg-white/90" : "bg-transparent"
+                }`}
+                placeholder={`Buscar  ${ROTATING_PLACEHOLDERS[placeholderIndex]}…`}
+              />
+            </div>
+            <span className="cta-stroke-gradient-animate inline-flex shrink-0 rounded-full p-[1px]">
+              {hasActiveSearch ? (
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  className="group relative inline-flex overflow-hidden rounded-full bg-gradient-to-b from-[rgba(228,90,255,0.7)] to-[rgba(216,48,249,0.7)] font-manrope font-medium leading-normal text-white tracking-[-0.72px] transition-all duration-300 hover:opacity-90 md:h-12 md:w-12 md:min-w-0"
+                  aria-label="Limpiar búsqueda y volver al inicio"
+                >
+                  <span className="relative z-10 flex h-10 w-10 items-center justify-center md:h-12 md:w-12">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 md:h-6 md:w-6">
+                      <path d="M18 6L6 18M6 6l12 12" />
+                    </svg>
+                  </span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={search}
+                  disabled={loading}
+                  className="group relative inline-flex overflow-hidden rounded-full bg-gradient-to-b from-[rgba(228,90,255,0.7)] to-[rgba(216,48,249,0.7)] font-manrope font-medium leading-normal text-white tracking-[-0.72px] transition-all duration-300 disabled:opacity-60 md:gap-2 md:px-6 md:py-3"
+                  aria-label="Buscar"
+                >
+                  <span
+                    className="absolute inset-x-0 bottom-0 h-full origin-bottom scale-y-0 bg-gradient-to-t from-[rgba(255,255,255,0.18)] via-[rgba(255,200,255,0.08)] to-transparent transition-transform duration-500 ease-in-out group-hover:scale-y-100"
+                    aria-hidden
+                  />
+                  <span className="relative z-10 flex h-10 w-10 items-center justify-center gap-1 md:h-auto md:w-auto md:min-w-0">
+                    <Image
+                      src="/search-ai-icon@2x.png"
+                      alt=""
+                      width={40}
+                      height={40}
+                      className="h-4 w-4 md:h-5 md:w-5 object-contain mix-blend-lighten"
+                      unoptimized
+                    />
+                    <span className="hidden md:inline md:font-manrope md:text-base md:font-medium md:leading-normal md:tracking-[-0.72px] md:text-lg">Buscar</span>
+                  </span>
+                </button>
+              )}
+            </span>
+          </div>
         </div>
-      </div>
       </div>
     </div>
   );
