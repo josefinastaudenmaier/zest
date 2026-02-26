@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import Image from "next/image";
-import type { ChipItem } from "@/components/BuscarCard";
 import { BuscarCard } from "@/components/BuscarCard";
 import type { PlaceResult } from "@/types/places";
 
@@ -13,6 +12,41 @@ const ROTATING_PLACEHOLDERS = [
   "hamburguesa viral",
   "cena veggie en nuñez",
 ];
+
+function normalizeCityForMatch(value: string): string {
+  const base = value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (!base) return "";
+  const isCabaAlias =
+    base === "caba" ||
+    base === "buenos aires" ||
+    base === "capital federal" ||
+    base === "ciudad autonoma de buenos aires" ||
+    (base.includes("buenos aires") && (base.includes("ciudad") || base.includes("autonoma") || base.includes("capital")));
+
+  if (isCabaAlias) {
+    return "caba";
+  }
+  return base;
+}
+
+function resolveCityFromList(detected: string, cityList: string[]): string | null {
+  const normalizedDetected = normalizeCityForMatch(detected);
+  if (!normalizedDetected) return null;
+
+  const exact = cityList.find((c) => normalizeCityForMatch(c) === normalizedDetected);
+  if (exact) return exact;
+
+  const includes = cityList.find((c) => {
+    const normalizedCity = normalizeCityForMatch(c);
+    return normalizedCity.includes(normalizedDetected) || normalizedDetected.includes(normalizedCity);
+  });
+  return includes ?? null;
+}
 
 function formatTipoComidaLabel(tipoComida?: string | null): string {
   const raw = (tipoComida ?? "").trim();
@@ -404,7 +438,6 @@ export default function BuscarPage() {
   const [ciudadSelected, setCiudadSelected] = useState<string>("");
   const [detectedCity, setDetectedCity] = useState<string>("");
   const [paisSelected, setPaisSelected] = useState<string>("");
-  const [chipsByPlaceId, setChipsByPlaceId] = useState<Record<string, ChipItem[]>>({});
 
   const [filterState, setFilterState] = useState<FilterState>({
     precio: null,
@@ -439,6 +472,21 @@ export default function BuscarPage() {
   const availableChips = useMemo(
     () => ({ espacio: [] as string[], showCocina: false, cocina: [] as string[] }),
     []
+  );
+
+  const resolvedDetectedCity = useMemo(
+    () => resolveCityFromList(detectedCity, ciudades) ?? "",
+    [detectedCity, ciudades]
+  );
+
+  const fallbackCabaCity = useMemo(
+    () => resolveCityFromList("caba", ciudades) ?? "",
+    [ciudades]
+  );
+
+  const effectiveCity = useMemo(
+    () => ciudadSelected.trim() || resolvedDetectedCity || fallbackCabaCity || "",
+    [ciudadSelected, resolvedDetectedCity, fallbackCabaCity]
   );
 
   const tipoComidaOptions = useMemo(() => {
@@ -537,12 +585,15 @@ export default function BuscarPage() {
 
   useEffect(() => {
     if (!detectedCity.trim() || ciudades.length === 0) return;
-    const normDetected = detectedCity.trim().toLowerCase();
-    const match =
-      ciudades.find((c) => c.trim().toLowerCase() === normDetected) ??
-      ciudades.find((c) => c.trim().toLowerCase().includes(normDetected) || normDetected.includes(c.trim().toLowerCase()));
+    const match = resolveCityFromList(detectedCity, ciudades);
     if (!match) return;
-    setCiudadSelected((prev) => (prev.trim() === "" ? match : prev));
+    setCiudadSelected((prev) => {
+      const prevNorm = normalizeCityForMatch(prev);
+      const detectedNorm = normalizeCityForMatch(detectedCity);
+      if (!prevNorm) return match;
+      if (prevNorm === detectedNorm) return match;
+      return prev;
+    });
   }, [detectedCity, ciudades]);
 
   useEffect(() => {
@@ -556,33 +607,29 @@ export default function BuscarPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [openDropdown]);
 
-  // Cargar recomendaciones pasando coords cuando no hay ciudad seleccionada
+  // Cargar recomendaciones con ciudad (si hay) y radio por coords (si hay)
   const loadRecommendations = useCallback(async (
     pais: string,
     ciudad: string,
-    coords: { lat: number; lng: number } | null
+    coords: { lat: number; lng: number } | null,
+    applyRadius: boolean
   ) => {
     setPlacesLoading(true);
     try {
       const params = new URLSearchParams();
       if (pais.trim()) params.set("pais", pais);
       if (ciudad.trim()) params.set("ciudad", ciudad.trim());
-      // Si no hay ciudad seleccionada, pasar coords para filtrar por 5km
-      if (!ciudad.trim() && coords) {
+      // Pasar coords solo cuando corresponde aplicar radio (ciudad detectada/default).
+      if (coords && applyRadius) {
         params.set("lat", String(coords.lat));
         params.set("lng", String(coords.lng));
+        params.set("apply_radius", "1");
       }
       const res = await fetch(`/api/lugares/recommendations?${params.toString()}`, { cache: "no-store" });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      const list = (data.results ?? []) as (PlaceCard & { chips?: ChipItem[] })[];
+      const list = (data.results ?? []) as PlaceCard[];
       setPlaces(list);
-      setChipsByPlaceId((prev) => ({
-        ...prev,
-        ...Object.fromEntries(
-          list.filter((p) => (p.chips?.length ?? 0) > 0).map((p) => [p.place_id, p.chips!])
-        ),
-      }));
     } catch {
       setPlaces([]);
     } finally {
@@ -591,8 +638,11 @@ export default function BuscarPage() {
   }, []);
 
   useEffect(() => {
-    loadRecommendations(paisSelected, ciudadSelected, userCoords);
-  }, [loadRecommendations, paisSelected, ciudadSelected, userCoords]);
+    const detectedNorm = normalizeCityForMatch(resolvedDetectedCity || "");
+    const effectiveNorm = normalizeCityForMatch(effectiveCity || "");
+    const shouldApplyRadius = Boolean(userCoords) && Boolean(detectedNorm) && detectedNorm === effectiveNorm;
+    loadRecommendations(paisSelected, effectiveCity, userCoords, shouldApplyRadius);
+  }, [loadRecommendations, paisSelected, effectiveCity, userCoords, resolvedDetectedCity]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -628,12 +678,6 @@ export default function BuscarPage() {
       }
       const raw = (data.results ?? []) as PlaceResult[];
       setResults(sortSearchResults(raw, q, userCoords));
-      setChipsByPlaceId((prev) => ({
-        ...prev,
-        ...Object.fromEntries(
-          raw.filter((p) => (p.chips?.length ?? 0) > 0).map((p) => [p.place_id, p.chips!])
-        ),
-      }));
       setHasActiveSearch(true);
       setFilterState({ precio: null, ambiente: [], tipoComida: [], etnia: [], espacio: [], cocina: [], calificacion: null });
     } catch (e) {
@@ -805,7 +849,7 @@ export default function BuscarPage() {
                   )}
                 </div>
               </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-4 md:pb-2">
+              <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-3 md:gap-4 md:pb-2">
                 {filteredResults.map((place) => (
                   <BuscarCard
                     key={place.place_id}
@@ -821,8 +865,8 @@ export default function BuscarPage() {
                     photoReference={place.photos?.[0]?.photo_reference}
                     lat={place.geometry?.location?.lat}
                     lng={place.geometry?.location?.lng}
+                    distance_m={null}
                     google_maps_url={place.google_maps_url ?? "#"}
-                    chips={chipsByPlaceId[place.place_id] ?? []}
                   />
                 ))}
               </div>
@@ -840,7 +884,7 @@ export default function BuscarPage() {
         )}
 
         {/* Recomendaciones por zona: solo se muestran cuando NO hay búsqueda activa */}
-        {results.length === 0 && (
+        {!hasActiveSearch && results.length === 0 && (
           <div className="mt-6 w-full md:mt-10">
             {placesLoading ? (
               <p className="font-manrope text-[#152f33]/80">Cargando recomendaciones…</p>
@@ -858,7 +902,7 @@ export default function BuscarPage() {
                       aria-label="Seleccionar ciudad"
                     >
                       <span className="font-heading text-[28px] font-medium italic leading-normal tracking-[-1.12px] text-[#E45AFF] md:text-[40px] md:tracking-[-1.6px]">
-                        {ciudadSelected.trim() || detectedCity.trim() || "tu zona"}
+                        {effectiveCity || "Seleccioná ciudad"}
                       </span>
                       <svg
                         className="h-6 w-6 text-[#152f33] transition-transform duration-200"
@@ -872,16 +916,22 @@ export default function BuscarPage() {
                     </button>
                     {openDropdown === "ciudad" && (
                       <div className="absolute left-0 top-full z-50 mt-2 min-w-[220px] rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCiudadSelected("");
-                            setOpenDropdown(null);
-                          }}
-                          className="font-manrope flex w-full items-center px-4 py-2 text-left text-sm text-[#152f33] transition hover:bg-[#152f33]/5"
-                        >
-                          {detectedCity.trim() || "tu zona"}
-                        </button>
+                        {resolvedDetectedCity && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCiudadSelected(resolvedDetectedCity);
+                              setOpenDropdown(null);
+                            }}
+                            className={`font-manrope flex w-full items-center px-4 py-2 text-left text-sm transition hover:bg-[#152f33]/5 ${
+                              ciudadSelected.trim().toLowerCase() === resolvedDetectedCity.toLowerCase()
+                                ? "bg-[var(--btn-primary-from)]/15 text-[var(--btn-primary-from)] font-medium"
+                                : "text-[#152f33]"
+                            }`}
+                          >
+                            {resolvedDetectedCity}
+                          </button>
+                        )}
                         {ciudades.map((c) => (
                           <button
                             key={c}
@@ -1005,7 +1055,7 @@ export default function BuscarPage() {
                         )}
                       </div>
                     </div>
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3 md:gap-4 md:pb-2">
+                    <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-3 md:gap-4 md:pb-2">
                       {filteredPlacesForAbiertos.map((place) => (
                         <BuscarCard
                           key={place.place_id}
@@ -1021,15 +1071,15 @@ export default function BuscarPage() {
                           photoReference={place.photo_reference}
                           lat={place.geometry?.location?.lat}
                           lng={place.geometry?.location?.lng}
+                          distance_m={place.distance_m}
                           google_maps_url={place.google_maps_url ?? "#"}
-                          chips={chipsByPlaceId[place.place_id] ?? []}
                         />
                       ))}
                     </div>
                   </>
                 ) : (
                   <p className="font-manrope text-[#152f33]/80">
-                    No hay recomendaciones en {ciudadSelected.trim() || detectedCity.trim() || "tu zona"} en este momento.
+                    No hay recomendaciones en {effectiveCity || "esta ciudad"} en este momento.
                   </p>
                 )}
               </div>
@@ -1046,12 +1096,12 @@ export default function BuscarPage() {
         />
 
         {/* Barra de búsqueda fija */}
-        <div className="fixed bottom-[24px] left-1/2 right-4 z-40 w-full max-w-[354px] -translate-x-1/2 px-4 md:bottom-0 md:left-0 md:right-0 md:max-w-none md:translate-x-0 md:bg-[#fffbf8]/90 md:py-4 md:backdrop-blur-sm">
+        <div className="fixed bottom-[24px] left-1/2 z-40 w-[calc(100%-2rem)] max-w-[1000px] -translate-x-1/2 md:bottom-0 md:w-full md:max-w-none md:bg-[#fffbf8]/90 md:py-4 md:backdrop-blur-sm">
           <div
-            className="flex w-full items-center justify-between gap-3 px-5 py-2.5 md:max-w-[1000px] md:mx-auto md:px-4"
+            className="flex w-full items-center justify-between gap-3 px-5 py-2.5 md:mx-auto md:max-w-[1000px] md:px-4"
             style={{
               borderRadius: "100px",
-              border: "1px solid #E45AFF",
+              border: "1px solid rgba(228, 90, 255, 0.2)",
               background: "linear-gradient(180deg, #FAFAFA 0%, #FFF 100%)",
               boxShadow: "2px 2px 12px 0 rgba(228, 90, 255, 0.10)",
             }}
@@ -1088,23 +1138,23 @@ export default function BuscarPage() {
                   type="button"
                   onClick={search}
                   disabled={loading}
-                  className="group relative inline-flex overflow-hidden rounded-full bg-gradient-to-b from-[rgba(228,90,255,0.7)] to-[rgba(216,48,249,0.7)] font-manrope font-medium leading-normal text-white tracking-[-0.72px] transition-all duration-300 disabled:opacity-60 md:gap-2 md:px-6 md:py-3"
+                  className="group relative inline-flex items-center justify-center gap-[10px] overflow-hidden rounded-full bg-gradient-to-b from-[rgba(228,90,255,0.7)] to-[rgba(216,48,249,0.7)] px-6 py-3 font-manrope font-medium leading-normal text-white tracking-[-0.72px] transition-all duration-300 disabled:opacity-60"
                   aria-label="Buscar"
                 >
                   <span
                     className="absolute inset-x-0 bottom-0 h-full origin-bottom scale-y-0 bg-gradient-to-t from-[rgba(255,255,255,0.18)] via-[rgba(255,200,255,0.08)] to-transparent transition-transform duration-500 ease-in-out group-hover:scale-y-100"
                     aria-hidden
                   />
-                  <span className="relative z-10 flex h-10 w-10 items-center justify-center gap-1 md:h-auto md:w-auto md:min-w-0">
+                  <span className="relative z-10 flex items-center justify-center gap-[10px]">
                     <Image
                       src="/search-ai-icon@2x.png"
                       alt=""
                       width={40}
                       height={40}
-                      className="h-4 w-4 md:h-5 md:w-5 object-contain mix-blend-lighten"
+                      className="h-4 w-4 object-contain mix-blend-lighten md:h-5 md:w-5"
                       unoptimized
                     />
-                    <span className="hidden md:inline md:font-manrope md:text-base md:font-medium md:leading-normal md:tracking-[-0.72px] md:text-lg">Buscar</span>
+                    <span className="font-manrope text-base font-medium leading-normal tracking-[-0.72px] md:text-lg">Buscar</span>
                   </span>
                 </button>
               )}

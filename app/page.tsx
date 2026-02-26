@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/Providers";
 
 // Asset del diseño Figma (hero)
@@ -9,7 +10,8 @@ const IMG_HERO =
   "https://www.figma.com/api/mcp/asset/24a96b45-18b7-4289-ba49-3b6f246a9e56";
 
 export default function HomePage() {
-  const { signInWithGoogle } = useAuth();
+  const { user, loading, signInWithGoogle } = useAuth();
+  const router = useRouter();
 
   return (
     <div className="relative min-h-screen overflow-hidden rounded-none -mx-4 w-[100vw] max-w-none" style={{ marginLeft: "calc(-50vw + 50%)" }}>
@@ -59,9 +61,18 @@ export default function HomePage() {
           </div>
           {/* Borde con gradiente animado (se mueve) + padding 1px */}
           <span className="cta-stroke-gradient-animate inline-flex rounded-full p-[1px]">
-            <Link
-              href="/buscar"
-              className="group relative inline-flex overflow-hidden rounded-full bg-gradient-to-b from-[rgba(228,90,255,0.7)] to-[rgba(216,48,249,0.7)] font-manrope px-6 py-3 font-medium leading-normal text-white tracking-[-0.72px] transition-all duration-300"
+            <button
+              type="button"
+              onClick={async () => {
+                if (loading) return;
+                if (user) {
+                  router.push("/buscar");
+                  return;
+                }
+                await signInWithGoogle();
+              }}
+              className="group relative inline-flex overflow-hidden rounded-full bg-gradient-to-b from-[rgba(228,90,255,0.7)] to-[rgba(216,48,249,0.7)] font-manrope px-6 py-3 font-medium leading-normal text-white tracking-[-0.72px] transition-all duration-300 disabled:opacity-60"
+              disabled={loading}
             >
               {/* Pulso sutil desde el borde inferior al hacer hover */}
               <span
@@ -74,7 +85,7 @@ export default function HomePage() {
                   <path d="M9 18l6-6-6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </span>
-            </Link>
+            </button>
           </span>
         </div>
       </div>

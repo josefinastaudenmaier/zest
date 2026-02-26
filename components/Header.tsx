@@ -51,6 +51,14 @@ export function Header() {
 
           {/* Mobile */}
           <div className="flex md:hidden items-center gap-6">
+            <a
+              href="https://cafecito.app/joseperouxer"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-medium leading-normal tracking-[-0.48px] text-[#152f33]/80 underline-offset-2 transition-opacity hover:opacity-100 hover:underline"
+            >
+              Donar cafecito
+            </a>
             {loading ? (
               <span className="h-6 w-6 animate-pulse rounded-full bg-[#152f33]/10" />
             ) : user ? (
@@ -116,6 +124,14 @@ export function Header() {
 
           {/* Desktop */}
           <div className="hidden md:flex items-center gap-[20px] font-manrope">
+            <a
+              href="https://cafecito.app/joseperouxer"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-base font-medium leading-normal tracking-[-0.72px] text-[#152f33]/80 underline-offset-2 transition-opacity hover:opacity-100 hover:underline"
+            >
+              Donar cafecito
+            </a>
             {loading ? (
               <span className="text-[18px] text-[#152f33]/50">...</span>
             ) : user ? (

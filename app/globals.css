@@ -124,3 +124,31 @@ body {
 .animate-search-placeholder {
   animation: search-placeholder-scroll 18s linear infinite;
 }
+
+@keyframes review-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes review-sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-review-backdrop {
+  animation: review-backdrop-in 180ms ease-out both;
+}
+
+.animate-review-sheet {
+  animation: review-sheet-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}

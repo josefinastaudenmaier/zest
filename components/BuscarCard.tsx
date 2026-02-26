@@ -21,60 +21,12 @@ const CHIP_ICONS: Record<string, React.ReactNode> = {
       <line x1="14" y1="1" x2="14" y2="4" />
     </svg>
   ),
-  wifi: (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M5 12.55a11 11 0 0 1 14.08 0" />
-      <path d="M1.42 9a16 16 0 0 1 21.16 0" />
-      <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
-      <line x1="12" y1="20" x2="12.01" y2="20" />
-    </svg>
-  ),
   star: (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
       <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
     </svg>
   ),
-  terraza: (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22v-8" />
-      <path d="M5 14v4h14v-4" />
-      <path d="M5 14l2-6 5 2 5-2 2 6" />
-      <path d="M12 8l-2-4-2 4 2 2 2-2z" />
-    </svg>
-  ),
-  tranquilo: (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17 6c-1.5 0-3 1.5-3 4 0 2 1.5 3 3 3" />
-      <path d="M7 6c1.5 0 3 1.5 3 4 0 2-1.5 3-3 3" />
-      <path d="M12 2v20" />
-    </svg>
-  ),
-  movido: (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 18V5l12-2v13" />
-      <circle cx="6" cy="18" r="3" />
-      <circle cx="18" cy="16" r="3" />
-    </svg>
-  ),
-  pet: (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M11 12c0-1.5.5-2.5 1.5-2.5s1.5 1 1.5 2.5-.5 2.5-1.5 2.5-1.5-1-1.5-2.5Z" />
-      <path d="M12.5 6c.8 0 1.5-.7 1.5-1.5S13.3 3 12.5 3 11 3.7 11 4.5 11.7 6 12.5 6Z" />
-      <path d="M15 8.5c.5.5 1 1.5 1 3s-.5 2.5-1 3" />
-      <path d="M9 8.5c-.5.5-1 1.5-1 3s.5 2.5 1 3" />
-      <path d="M7 15c-1.5 0-2.5 1.5-2.5 3 0 1.5 1 3 2.5 3s2.5-1.5 2.5-3c0-1.5-1-3-2.5-3Z" />
-      <path d="M17 15c1.5 0 2.5 1.5 2.5 3 0 1.5-1 3-2.5 3s-2.5-1.5-2.5-3c0-1.5 1-3 2.5-3Z" />
-    </svg>
-  ),
-  precio: (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="12" y1="1" x2="12" y2="23" />
-      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-    </svg>
-  ),
 };
-
-export type ChipItem = { label: string; icon: string };
 
 function getCategoryFromTypes(types: string[] | undefined): string {
   if (!types?.length) return "LUGAR";
@@ -105,8 +57,8 @@ type BuscarCardProps = {
   /** Para fallback de foto vía Places API: nombre + lat/lng */
   lat?: number | null;
   lng?: number | null;
+  distance_m?: number | null;
   google_maps_url: string;
-  chips: ChipItem[];
 };
 
 export function BuscarCard({
@@ -122,8 +74,8 @@ export function BuscarCard({
   photoUrl,
   lat,
   lng,
+  distance_m,
   google_maps_url,
-  chips,
 }: BuscarCardProps) {
   const [fetchedPhotoUrl, setFetchedPhotoUrl] = useState<string | null>(null);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
@@ -155,9 +107,13 @@ export function BuscarCard({
 
   const showCityCountry = pais != null && String(pais).toUpperCase() !== "AR" && (ciudad?.trim() || pais?.trim());
   const mapsHref = google_maps_url?.trim() || "#";
-  const topChip = chips[0];
   const hasReview = Boolean(reviewText?.trim());
-  const hasVisited = hasReview;
+  const hasRating = typeof rating === "number" && !Number.isNaN(rating);
+  const hasVisited = hasReview && hasRating;
+  const distanceKmLabel =
+    distance_m != null && !Number.isNaN(distance_m)
+      ? `${(distance_m / 1000).toFixed(1).replace(".", ",")} km`
+      : null;
   const formattedDate =
     reviewDate && !Number.isNaN(Date.parse(reviewDate))
       ? new Intl.DateTimeFormat("es-AR", {
@@ -168,7 +124,7 @@ export function BuscarCard({
       : null;
 
   return (
-    <div className="relative flex w-full flex-col items-start overflow-hidden rounded-[30px] border border-[#f7f3f1] bg-gradient-to-b from-[#fafafa] to-white pb-[24px] gap-5">
+    <div className="relative flex w-full self-start flex-col items-start overflow-hidden rounded-[30px] border border-[#f7f3f1] bg-gradient-to-b from-[#fafafa] to-white pb-[24px] gap-5">
       {/* Imagen: h 200px, solo esquinas superiores 24px (Figma 45:295) */}
       <div className="relative h-[200px] w-full shrink-0 overflow-hidden rounded-tl-[24px] rounded-tr-[24px] bg-[#d9d9d9]">
         {imgSrc && !imageError ? (
@@ -193,6 +149,9 @@ export function BuscarCard({
         <div className="flex items-center justify-between gap-2 px-5">
           <p className="font-manrope text-lg font-medium leading-[0] tracking-[-0.72px] text-[#152f33]">
             <span className="leading-[normal]">{name}</span>
+            {!hasVisited && distanceKmLabel && (
+              <span className="leading-[normal] text-[rgba(21,47,51,0.5)]"> ({distanceKmLabel})</span>
+            )}
             {showCityCountry && (
               <span className="leading-[normal] text-[rgba(21,47,51,0.5)]">
                 {" "}
@@ -200,7 +159,7 @@ export function BuscarCard({
               </span>
             )}
           </p>
-          {rating != null && (
+          {hasVisited && rating != null && (
             <div className="flex shrink-0 items-center gap-1">
               <span className="text-[#152f33]">{CHIP_ICONS.star}</span>
               <span className="font-manrope text-sm font-medium leading-normal tracking-[-0.56px] text-[#152f33]">
@@ -209,30 +168,12 @@ export function BuscarCard({
             </div>
           )}
         </div>
-        {hasVisited ? (
-          <div className="absolute left-[19px] top-[-181px] z-20">
-            {topChip ? (
-              <div
-                key={topChip.label}
-                className="flex items-center gap-1 rounded-[1000px] border border-[#191e1f] bg-[#fffbf8] px-3 py-1.5"
-              >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[#152f33]">
-                  {CHIP_ICONS[topChip.icon] ?? CHIP_ICONS.wifi}
-                </span>
-                <span className="font-manrope text-xs font-medium leading-normal tracking-[-0.48px] text-[#152f33]">
-                  {topChip.label.toLowerCase()}
-                </span>
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <div className="mt-8 flex w-full items-center justify-center">
-            <div className="font-manrope text-[40px] font-medium leading-[0] tracking-[-1.6px] text-[#152f33] md:text-[48px] md:tracking-[-1.92px]">
-              <span className="leading-[normal]">No visitado aún</span>
-            </div>
-          </div>
+        {!hasVisited && (
+          <p className="mt-6 w-full px-5 pb-1 text-center font-manrope text-[14px] font-medium leading-normal tracking-[-0.56px] text-[#152f33]">
+            No visitado aún
+          </p>
         )}
-        {hasReview && (
+        {hasVisited && (
           <div className="w-full px-5 pt-3">
             <button
               type="button"
@@ -255,37 +196,89 @@ export function BuscarCard({
         className="absolute inset-0 z-10 rounded-[30px]"
         aria-label={`Abrir ${name} en Google Maps`}
       />
-      {isReviewOpen && (
-        <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/30 p-4 md:items-center">
-          <div className="w-full max-w-[560px] rounded-[24px] bg-white p-5 shadow-xl md:p-6">
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <p className="font-manrope text-xs uppercase tracking-[0.48px] text-[#152f33]/50">Reseña de Josefina</p>
-                {formattedDate && (
-                  <p className="font-manrope text-sm text-[#152f33]/70">{formattedDate}</p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setIsReviewOpen(false);
-                }}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#152f33]/15 text-[#152f33] hover:bg-[#152f33]/5"
-                aria-label="Cerrar reseña"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 6L6 18M6 6l12 12" />
-                </svg>
-              </button>
+      <div
+        className={`fixed inset-0 z-[100] flex items-end justify-center bg-[#191e1f]/45 backdrop-blur-[3px] transition-opacity duration-200 md:items-center md:p-6 ${
+          isReviewOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+        }`}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsReviewOpen(false);
+        }}
+      >
+        <div
+          className={`mb-5 w-[calc(100%-36px)] max-h-[88vh] max-w-[512px] overflow-hidden rounded-[48px] bg-[#fffbf8] px-6 pb-6 pt-3 shadow-[0_20px_60px_rgba(0,0,0,0.18)] transition-all duration-220 md:mb-0 md:rounded-[36px] md:p-6 ${
+            isReviewOpen ? "translate-y-0 scale-100 opacity-100" : "translate-y-2 scale-[0.985] opacity-0"
+          }`}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+          <div className="mx-auto mb-5 h-2 w-[78px] rounded-full bg-[#d9d9d9] md:hidden" />
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              {formattedDate && (
+                <p className="font-manrope text-[13px] uppercase tracking-[0.52px] text-[#8a9699]">
+                  {formattedDate}
+                </p>
+              )}
+              <p className="mt-1 truncate font-manrope text-[24px] font-medium leading-[1.05] tracking-[-0.96px] text-[#152f33]">
+                {name}
+                {distanceKmLabel ? (
+                  <span className="font-normal text-[#8a9699]"> ({distanceKmLabel})</span>
+                ) : null}
+              </p>
             </div>
-            <p className="max-h-[45vh] overflow-y-auto whitespace-pre-line font-manrope text-base leading-relaxed text-[#152f33]">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsReviewOpen(false);
+              }}
+              className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#d8d8d8] text-[#152f33] hover:bg-[#152f33]/5 md:inline-flex"
+              aria-label="Cerrar reseña"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="relative mb-6 rotate-[2deg] overflow-hidden rounded-[24px] border border-[#efe8f4] bg-gradient-to-b from-[#ffffff] to-[#f7f7f7] p-4 md:p-5">
+            <svg
+              className="pointer-events-none absolute right-[-25.358px] top-[-48.477px] h-[120px] w-[120px] -rotate-[18.112deg] text-[#d46dff] opacity-10"
+              viewBox="0 0 120 120"
+              fill="currentColor"
+              aria-hidden
+            >
+              <path d="M60 5l15.84 32.09 35.41 5.15-25.62 24.97 6.05 35.27L60 85.84 28.32 102.5l6.05-35.27L8.75 42.24l35.41-5.15L60 5z" />
+            </svg>
+            {hasRating && (
+              <div className="mb-2 flex items-center gap-2 text-[#d46dff]">
+                <span className="inline-flex">{CHIP_ICONS.star}</span>
+                <span className="font-manrope text-[14px] font-medium leading-none tracking-[-0.56px]">
+                  {rating?.toFixed(1).replace(".", ",")}
+                </span>
+              </div>
+            )}
+            <p className="max-h-[47vh] overflow-y-auto whitespace-pre-line font-manrope text-[14px] leading-[1.35] tracking-[-0.56px] text-[#152f33] md:text-[15px] md:tracking-[-0.6px]">
               {reviewText}
             </p>
           </div>
+
+          <a
+            href={mapsHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex w-full items-center justify-center rounded-[999px] border border-[#c3dfff] bg-gradient-to-b from-[rgba(197,224,229,0.75)] to-[rgba(161,187,190,0.75)] px-6 py-3 font-manrope text-[14px] font-medium tracking-[-0.56px] text-[#152f33]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            Ver en Google Maps
+          </a>
         </div>
-      )}
+      </div>
     </div>
   );
 }
