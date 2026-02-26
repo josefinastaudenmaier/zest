@@ -33,11 +33,25 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     try {
-      const envSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
       const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
-      const preferEnvInProd = process.env.NODE_ENV === "production" && Boolean(envSiteUrl);
-      const baseUrl = (preferEnvInProd ? envSiteUrl : browserOrigin || envSiteUrl)?.replace(/\/$/, "");
-      const redirectTo = baseUrl ? `${baseUrl}/auth/callback` : undefined;
+      const envSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() ?? "";
+
+      const normalizeCallbackUrl = (raw: string): string | null => {
+        if (!raw) return null;
+        try {
+          const hasProtocol = /^https?:\/\//i.test(raw);
+          const url = new URL(hasProtocol ? raw : `https://${raw}`);
+          const path = url.pathname.replace(/\/+$/, "");
+          if (path === "/auth/callback") return `${url.origin}/auth/callback`;
+          return `${url.origin}/auth/callback`;
+        } catch {
+          return null;
+        }
+      };
+
+      const browserCallback = normalizeCallbackUrl(browserOrigin);
+      const envCallback = normalizeCallbackUrl(envSiteUrl);
+      const redirectTo = browserCallback ?? envCallback ?? undefined;
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
