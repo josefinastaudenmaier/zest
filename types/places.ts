@@ -14,6 +14,8 @@ export interface PlaceResult {
   vicinity?: string;
   /** Reseña personal (Supabase lugares); usada para filtros semánticos. */
   resena_personal?: string;
+  /** Fecha de publicación de la reseña personal. */
+  fecha_resena?: string;
   /** Chips extraídos de questions (tipo comida, ruido, reserva). */
   chips?: Array<{ label: string; icon: string }>;
   /** Enlace a Google Maps; al tocar la card se abre en nueva pestaña. */

@@ -1,0 +1,2 @@
+- Evita usar useEffect y useState.
+- Para endpoints utiliza React Query con un hook.

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { extractChipsFromQuestions } from "@/lib/questionChips";
+import { esLugarDeComida } from "@/lib/excludeNonFood";
+import { buildCanonicalCityMap, canonicalizeCity, extractCityFromAddress } from "@/lib/city";
 import type { PlaceResult } from "@/types/places";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +36,14 @@ function buildSearchQuery(q: string): string {
 function lugarToPlaceResult(
   row: Record<string, unknown>,
   chips: Array<{ label: string; icon: string }>
-): PlaceResult & { google_maps_url?: string; ciudad?: string; pais?: string; resena_personal?: string; chips?: Array<{ label: string; icon: string }> } {
+): PlaceResult & {
+  google_maps_url?: string;
+  ciudad?: string;
+  pais?: string;
+  resena_personal?: string;
+  fecha_resena?: string;
+  chips?: Array<{ label: string; icon: string }>;
+} {
   const id = row.id as string;
   const nombre = (row.nombre as string) ?? "";
   const direccion = (row.direccion as string) ?? null;
@@ -42,9 +51,10 @@ function lugarToPlaceResult(
   const lat = row.lat as number | null;
   const lng = row.lng as number | null;
   const resena = (row.review_text_published as string) ?? null;
+  const fechaResena = (row.fecha_resena as string) ?? null;
   const tipoComida = (row.tipo_comida as string) ?? null;
   const googleMapsUrl = (row.google_maps_url as string) ?? null;
-  const ciudad = (row.ciudad as string) ?? null;
+  const ciudad = extractCityFromAddress((row.direccion as string | null) ?? null);
   const pais = (row.pais as string) ?? null;
   return {
     place_id: id,
@@ -59,6 +69,7 @@ function lugarToPlaceResult(
         : undefined,
     types: tipoComida ? [tipoComida] : undefined,
     resena_personal: resena ?? undefined,
+    fecha_resena: fechaResena ?? undefined,
     chips,
     google_maps_url: googleMapsUrl ?? undefined,
     ciudad: ciudad ?? undefined,
@@ -77,20 +88,15 @@ export async function GET(request: NextRequest) {
   }
   const { searchParams } = request.nextUrl ?? new URL(request.url);
   const q = searchParams.get("q") ?? "";
-  const pais = searchParams.get("pais") ?? "AR";
+  const pais = searchParams.get("pais") ?? "";
   const ciudad = searchParams.get("ciudad") ?? "";
 
   const supabase = createClient(url, key);
   let query = supabase
     .from("lugares")
-    .select("id, nombre, direccion, ciudad, pais, google_maps_url, five_star_rating_published, tipo_comida, review_text_published, questions")
-    .eq("pais", pais)
+    .select("id, nombre, direccion, ciudad, pais, lat, lng, google_maps_url, five_star_rating_published, tipo_comida, review_text_published, fecha_resena, questions")
     .order("five_star_rating_published", { ascending: false, nullsFirst: false })
-    .limit(200);
-
-  if (ciudad.trim()) {
-    query = query.ilike("ciudad", `%${ciudad.trim()}%`);
-  }
+    .limit(2000);
 
   const { data: rawData, error } = await query;
   if (error) {
@@ -98,7 +104,28 @@ export async function GET(request: NextRequest) {
   }
 
   const searchTerm = q.trim().replace(/%/g, "").replace(/\s+/g, " ").trim().toLowerCase();
-  let data: Record<string, unknown>[] = rawData ?? [];
+  const cityFilter = ciudad.trim().toLowerCase();
+  const baseRows: Record<string, unknown>[] = (rawData ?? []).filter((row) => {
+    if (!esLugarDeComida(String(row.nombre ?? ""))) return false;
+    if (!pais.trim()) return true;
+    return String(row.pais ?? "").toUpperCase() === pais.trim().toUpperCase();
+  });
+
+  const canonicalMap = buildCanonicalCityMap(
+    baseRows.map((r) => ({
+      direccion: (r.direccion as string | null) ?? null,
+      lat: r.lat as number | null,
+      lng: r.lng as number | null,
+    })),
+    50
+  );
+
+  let data: Record<string, unknown>[] = baseRows.filter((row) => {
+    if (!cityFilter) return true;
+    const rawCity = extractCityFromAddress((row.direccion as string | null) ?? null);
+    const city = canonicalizeCity(rawCity, canonicalMap);
+    return city ? city.toLowerCase() === cityFilter : false;
+  });
   if (searchTerm) {
     data = data.filter((row) => {
       const nombre = String(row.nombre ?? "").toLowerCase();
@@ -108,11 +135,21 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  let results = (data ?? []).map((row) => {
+  const dedup = new Map<string, Record<string, unknown>>();
+  for (const row of data) {
+    const key = String(row.google_maps_url ?? row.nombre ?? row.id ?? "");
+    if (!key) continue;
+    if (!dedup.has(key)) dedup.set(key, row);
+  }
+
+  let results = Array.from(dedup.values()).map((row) => {
     const r = row as Record<string, unknown>;
     const questions = r.questions as Array<{ question?: string; selected_option?: string }> | null | undefined;
     const chips = extractChipsFromQuestions(questions);
-    return lugarToPlaceResult(r, chips);
+    const mapped = lugarToPlaceResult(r, chips);
+    const rawCity = extractCityFromAddress((r.direccion as string | null) ?? null);
+    const city = canonicalizeCity(rawCity, canonicalMap);
+    return { ...mapped, ciudad: city ?? undefined };
   });
 
   if (q.trim()) {

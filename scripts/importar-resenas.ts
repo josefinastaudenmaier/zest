@@ -45,6 +45,21 @@ const PALABRAS_EXCLUIDAS = [
   "tour",
   "subterránea",
   "subterranea",
+  "alojamiento",
+  "hospedaje",
+  "hostel",
+  "cabaña",
+  "cabana",
+  "bungalow",
+  "lodge",
+  "apart hotel",
+  "departamento para turistas",
+  "resort",
+  "hostal",
+  "bed and breakfast",
+  "b&b",
+  "posada",
+  "hostería",
 ];
 
 function esLugarDeComida(nombre: string): boolean {
@@ -55,10 +70,16 @@ function esLugarDeComida(nombre: string): boolean {
   return !PALABRAS_EXCLUIDAS.some((p) => n.includes(p.toLowerCase()));
 }
 
+/**
+ * Extrae la ciudad (no la provincia). En Argentina:
+ * "calle, C1414 CABA, Argentina" -> 3 partes -> ciudad = CABA
+ * "calle, B7609 Chapadmalal, Provincia de Buenos Aires, Argentina" -> 4 partes -> ciudad = B7609 Chapadmalal (no "Provincia de Buenos Aires")
+ */
 function extraerCiudad(direccion: string | undefined): string | null {
   if (!direccion || !direccion.trim()) return null;
   const partes = direccion.split(",").map((s) => s.trim());
   if (partes.length < 2) return null;
+  if (partes.length >= 4) return partes[partes.length - 3] ?? null;
   return partes[partes.length - 2] ?? null;
 }
 

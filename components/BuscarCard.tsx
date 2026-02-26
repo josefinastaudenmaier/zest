@@ -96,15 +96,16 @@ type BuscarCardProps = {
   pais?: string | null;
   /** Rating personal de Josefina (estrellas) */
   rating?: number | null;
+  /** Reseña personal de Josefina */
+  reviewText?: string | null;
+  /** Fecha de publicación de la reseña */
+  reviewDate?: string | null;
   photoReference?: string | null;
   photoUrl?: string;
   /** Para fallback de foto vía Places API: nombre + lat/lng */
   lat?: number | null;
   lng?: number | null;
   google_maps_url: string;
-  isFav: boolean;
-  onToggleFav: (e: React.MouseEvent) => void;
-  favLoading?: boolean;
   chips: ChipItem[];
 };
 
@@ -115,17 +116,17 @@ export function BuscarCard({
   ciudad,
   pais,
   rating,
+  reviewText,
+  reviewDate,
   photoReference,
   photoUrl,
   lat,
   lng,
   google_maps_url,
-  isFav,
-  onToggleFav,
-  favLoading,
   chips,
 }: BuscarCardProps) {
   const [fetchedPhotoUrl, setFetchedPhotoUrl] = useState<string | null>(null);
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
   const imgSrc =
     photoUrl ??
     (photoReference ? getPlacePhotoUrl(photoReference, 400) : null) ??
@@ -154,6 +155,17 @@ export function BuscarCard({
 
   const showCityCountry = pais != null && String(pais).toUpperCase() !== "AR" && (ciudad?.trim() || pais?.trim());
   const mapsHref = google_maps_url?.trim() || "#";
+  const topChip = chips[0];
+  const hasReview = Boolean(reviewText?.trim());
+  const hasVisited = hasReview;
+  const formattedDate =
+    reviewDate && !Number.isNaN(Date.parse(reviewDate))
+      ? new Intl.DateTimeFormat("es-AR", {
+          day: "2-digit",
+          month: "long",
+          year: "numeric",
+        }).format(new Date(reviewDate))
+      : null;
 
   return (
     <div className="relative flex w-full flex-col items-start overflow-hidden rounded-[30px] border border-[#f7f3f1] bg-gradient-to-b from-[#fafafa] to-white pb-[24px] gap-4">
@@ -197,21 +209,44 @@ export function BuscarCard({
             </div>
           )}
         </div>
-        <div className="flex flex-wrap gap-1.5 items-start">
-          {chips.map(({ label, icon }) => (
-            <div
-              key={label}
-              className="flex items-center gap-1 rounded-[1000px] border border-[#191e1f, 0.16] bg-gradient-to-b from-[rgba(108,130,133,0.12)] to-[rgba(25,30,31,0.12)] px-3 py-1.5"
-            >
-              <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#6c8285]">
-                {CHIP_ICONS[icon] ?? CHIP_ICONS.wifi}
-              </span>
-              <span className="font-manrope text-xs font-medium leading-normal tracking-[-0.48px] text-[#6c8285]">
-                {label}
-              </span>
+        {hasVisited ? (
+          <div className="flex flex-wrap gap-1.5 items-start">
+            {topChip ? (
+              <div
+                key={topChip.label}
+                className="flex items-center gap-1 rounded-[1000px] border border-[#191e1f, 0.16] bg-gradient-to-b from-[rgba(108,130,133,0.12)] to-[rgba(25,30,31,0.12)] px-3 py-1.5"
+              >
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center text-[#6c8285]">
+                  {CHIP_ICONS[topChip.icon] ?? CHIP_ICONS.wifi}
+                </span>
+                <span className="font-manrope text-xs font-medium leading-normal tracking-[-0.48px] text-[#6c8285]">
+                  {topChip.label}
+                </span>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="mt-8 flex w-full items-center justify-center">
+            <div className="font-manrope text-[40px] font-medium leading-[0] tracking-[-1.6px] text-[#152f33] md:text-[48px] md:tracking-[-1.92px]">
+              <span className="leading-[normal]">No visitado aún</span>
             </div>
-          ))}
-        </div>
+          </div>
+        )}
+        {hasReview && (
+          <div className="mt-1">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsReviewOpen(true);
+              }}
+              className="relative z-20 inline-flex h-10 items-center justify-center rounded-[999px] bg-[#b7cbd2] px-8 font-manrope text-[40px] font-medium leading-[0] tracking-[-1.6px] text-[#152f33] md:text-lg md:tracking-[-0.72px]"
+            >
+              <span className="leading-[normal]">Ver reseña</span>
+            </button>
+          </div>
+        )}
       </div>
       <a
         href={mapsHref}
@@ -220,24 +255,37 @@ export function BuscarCard({
         className="absolute inset-0 z-10 rounded-[30px]"
         aria-label={`Abrir ${name} en Google Maps`}
       />
-      {/* Botón favoritos (Figma 45:315): right 19.67px, top 19px, p 12px, borde #fcffc3, gradiente */}
-      <button
-        type="button"
-        onClick={onToggleFav}
-        disabled={favLoading}
-        className="absolute right-[19.67px] top-[19px] z-20 flex h-12 w-12 items-center justify-center rounded-[999px] border border-white/10 bg-gradient-to-b from-[rgba(228,90,255)] to-[rgba(216,48,249)] p-3 disabled:opacity-50"
-        aria-label={isFav ? "Quitar de favoritos" : "Agregar a favoritos"}
-      >
-        {isFav ? (
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="h-6 w-6">
-            <path d="m11.645 20.91-.007-.003-.022-.012a15.247 15.247 0 0 1-.383-.218 25.18 25.18 0 0 1-4.244-3.17C4.688 15.36 2.25 12.174 2.25 8.25 2.25 5.322 4.714 3 7.688 3A5.5 5.5 0 0 1 12 5.052 5.5 5.5 0 0 1 16.313 3c2.973 0 5.437 2.322 5.437 5.25 0 3.925-2.438 7.111-4.739 9.256a25.175 25.175 0 0 1-4.244 3.17 15.247 15.247 0 0 1-.383.219l-.022.012-.007.004-.003.001a.752.752 0 0 1-.704 0l-.003-.001Z" />
-          </svg>
-        ) : (
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="white" className="h-6 w-6">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12Z" />
-          </svg>
-        )}
-      </button>
+      {isReviewOpen && (
+        <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/30 p-4 md:items-center">
+          <div className="w-full max-w-[560px] rounded-[24px] bg-white p-5 shadow-xl md:p-6">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div>
+                <p className="font-manrope text-xs uppercase tracking-[0.48px] text-[#152f33]/50">Reseña de Josefina</p>
+                {formattedDate && (
+                  <p className="font-manrope text-sm text-[#152f33]/70">{formattedDate}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsReviewOpen(false);
+                }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[#152f33]/15 text-[#152f33] hover:bg-[#152f33]/5"
+                aria-label="Cerrar reseña"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <p className="max-h-[45vh] overflow-y-auto whitespace-pre-line font-manrope text-base leading-relaxed text-[#152f33]">
+              {reviewText}
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

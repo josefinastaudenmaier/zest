@@ -2,10 +2,8 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import Image from "next/image";
-import { useAuth } from "@/components/Providers";
-import { useToast } from "@/components/ToastContext";
 import type { ChipItem } from "@/components/BuscarCard";
-import { BuscarCard, getCategory } from "@/components/BuscarCard";
+import { BuscarCard } from "@/components/BuscarCard";
 import type { PlaceResult } from "@/types/places";
 
 const ROTATING_PLACEHOLDERS = [
@@ -15,6 +13,12 @@ const ROTATING_PLACEHOLDERS = [
   "hamburguesa viral",
   "cena veggie en nuñez",
 ];
+
+function formatTipoComidaLabel(tipoComida?: string | null): string {
+  const raw = (tipoComida ?? "").trim();
+  if (!raw) return "LUGAR";
+  return raw.replace(/_/g, " ").toUpperCase();
+}
 
 // --- Filtros: definición y lógica ---
 
@@ -394,11 +398,11 @@ type PlaceCard = {
   google_maps_url?: string;
   ciudad?: string;
   pais?: string;
+  resena_personal?: string;
+  fecha_resena?: string;
 };
 
 export default function BuscarPage() {
-  const { user, signInWithGoogle } = useAuth();
-  const { showToast } = useToast();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<PlaceResult[]>([]);
@@ -410,9 +414,7 @@ export default function BuscarPage() {
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [ciudades, setCiudades] = useState<string[]>([]);
   const [ciudadSelected, setCiudadSelected] = useState<string>("");
-  const [paisSelected, setPaisSelected] = useState<string>("AR");
-  const [favoritedIds, setFavoritedIds] = useState<Set<string>>(new Set());
-  const [favLoadingId, setFavLoadingId] = useState<string | null>(null);
+  const [paisSelected, setPaisSelected] = useState<string>("");
   const [chipsByPlaceId, setChipsByPlaceId] = useState<Record<string, ChipItem[]>>({});
 
   const [filterState, setFilterState] = useState<FilterState>({
@@ -508,13 +510,16 @@ export default function BuscarPage() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/lugares/ciudades")
+    const params = new URLSearchParams();
+    if (paisSelected.trim()) params.set("pais", paisSelected.trim());
+    const url = params.toString() ? `/api/lugares/ciudades?${params.toString()}` : "/api/lugares/ciudades";
+    fetch(url)
       .then((res) => (res.ok ? res.json() : { ciudades: [] }))
       .then((data: { ciudades?: string[] }) => {
         setCiudades(Array.isArray(data.ciudades) ? data.ciudades : []);
       })
       .catch(() => setCiudades([]));
-  }, []);
+  }, [paisSelected]);
 
   const locationForCityAttempted = useRef(false);
   useEffect(() => {
@@ -570,90 +575,11 @@ export default function BuscarPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [openDropdown]);
 
-  useEffect(() => {
-    if (!user) {
-      setFavoritedIds(new Set());
-      return;
-    }
-    fetch("/api/favoritos", { credentials: "include" })
-      .then(async (res) => {
-        const text = await res.text();
-        try {
-          return JSON.parse(text);
-        } catch {
-          return { favoritos: [] };
-        }
-      })
-      .then((data) => {
-        const list = (data.favoritos ?? []) as Array<{ place_id: string }>;
-        setFavoritedIds(new Set(list.map((f) => f.place_id)));
-      })
-      .catch(() => setFavoritedIds(new Set()));
-  }, [user]);
-
-  const toggleFav = useCallback(
-    async (
-      placeId: string,
-      payload: { name?: string; formatted_address?: string; rating?: number; photo_reference?: string | null }
-    ) => {
-      if (!user) {
-        signInWithGoogle();
-        return;
-      }
-      setFavLoadingId(placeId);
-      const isFav = favoritedIds.has(placeId);
-      try {
-        if (isFav) {
-          const res = await fetch(`/api/favoritos?place_id=${encodeURIComponent(placeId)}`, {
-            method: "DELETE",
-            credentials: "include",
-          });
-          if (res.ok) {
-            setFavoritedIds((prev) => {
-              const next = new Set(prev);
-              next.delete(placeId);
-              return next;
-            });
-          }
-        } else {
-          const res = await fetch("/api/favoritos", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              place_id: placeId,
-              name: payload.name ?? undefined,
-              formatted_address: payload.formatted_address ?? undefined,
-              rating: payload.rating ?? undefined,
-              photo_reference: payload.photo_reference ?? undefined,
-            }),
-          });
-          if (res.ok) {
-            setFavoritedIds((prev) => new Set(Array.from(prev).concat(placeId)));
-            showToast(`${payload.name ?? "Lugar"} agregado a favoritos`);
-          } else {
-            const data = await res.json().catch(() => ({}));
-            const msg = data?.error;
-            showToast(
-              msg === "No autenticado"
-                ? "Iniciá sesión para guardar favoritos"
-                : msg && typeof msg === "string"
-                  ? msg
-                  : "No se pudo guardar"
-            );
-          }
-        }
-      } finally {
-        setFavLoadingId(null);
-      }
-    },
-    [user, signInWithGoogle, favoritedIds, showToast]
-  );
-
   const loadRecommendations = useCallback(async (pais: string, ciudad: string) => {
     setPlacesLoading(true);
     try {
-      const params = new URLSearchParams({ pais });
+      const params = new URLSearchParams();
+      if (pais.trim()) params.set("pais", pais);
       if (ciudad.trim()) params.set("ciudad", ciudad.trim());
       const res = await fetch(`/api/lugares/recommendations?${params.toString()}`);
       const data = await res.json();
@@ -689,7 +615,8 @@ export default function BuscarPage() {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ q, pais: paisSelected });
+      const params = new URLSearchParams({ q });
+      if (paisSelected.trim()) params.set("pais", paisSelected.trim());
       if (ciudadSelected.trim()) params.set("ciudad", ciudadSelected.trim());
       const res = await fetch(`/api/lugares/search?${params.toString()}`, {
         method: "GET",
@@ -787,7 +714,6 @@ export default function BuscarPage() {
                     onChange={(e) => {
                       const next = e.target.value;
                       setCiudadSelected(next);
-                      loadRecommendations(paisSelected, next);
                     }}
                     className="font-manrope rounded-[1000px] border border-[#152f33]/20 bg-white px-4 py-2 text-base text-[#152f33] focus:outline-none focus:ring-2 focus:ring-[#E45AFF]/40"
                     aria-label="Seleccionar ciudad"
@@ -799,7 +725,9 @@ export default function BuscarPage() {
                   </select>
                 </div>
                 <p className="font-heading text-[28px] font-medium leading-normal tracking-[-1.12px] text-[#152f33] md:text-[40px] md:tracking-[-1.6px]">
-                  Recomendaciones por tu zona
+                  {ciudadSelected.trim()
+                    ? `Recomendaciones en ${ciudadSelected.trim()}`
+                    : "Recomendaciones por tu zona"}
                 </p>
                 {filteredPlacesForAbiertos.length > 0 ? (
                   <>
@@ -1048,27 +976,17 @@ export default function BuscarPage() {
                       key={place.place_id}
                       placeId={place.place_id}
                       name={place.name}
-                      category={place.type?.toUpperCase().replace(/_/g, " ") ?? "LUGAR"}
+                      category={formatTipoComidaLabel(place.type)}
                       ciudad={place.ciudad}
                       pais={place.pais}
                       rating={place.rating}
+                      reviewText={place.resena_personal}
+                      reviewDate={place.fecha_resena}
                       photoUrl={place.photo_url ?? undefined}
                       photoReference={place.photo_reference}
                       lat={place.geometry?.location?.lat}
                       lng={place.geometry?.location?.lng}
                       google_maps_url={place.google_maps_url ?? "#"}
-                      isFav={favoritedIds.has(place.place_id)}
-                      onToggleFav={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        toggleFav(place.place_id, {
-                          name: place.name,
-                          formatted_address: place.vicinity,
-                          rating: place.rating,
-                          photo_reference: place.photo_reference ?? undefined,
-                        });
-                      }}
-                      favLoading={favLoadingId === place.place_id}
                       chips={chipsByPlaceId[place.place_id] ?? []}
                     />
                   );
@@ -1465,27 +1383,17 @@ export default function BuscarPage() {
                   key={place.place_id}
                   placeId={place.place_id}
                   name={place.name}
-                  category={getCategory(place.types)}
+                  category={formatTipoComidaLabel(place.types?.[0])}
                   ciudad={place.ciudad}
                   pais={place.pais}
                   rating={place.rating}
+                  reviewText={place.resena_personal}
+                  reviewDate={place.fecha_resena}
                   photoUrl={place.photoUrl}
                   photoReference={place.photos?.[0]?.photo_reference}
                   lat={place.geometry?.location?.lat}
                   lng={place.geometry?.location?.lng}
                   google_maps_url={place.google_maps_url ?? "#"}
-                  isFav={favoritedIds.has(place.place_id)}
-                  onToggleFav={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    toggleFav(place.place_id, {
-                      name: place.name,
-                      formatted_address: place.formatted_address ?? undefined,
-                      rating: place.rating ?? undefined,
-                      photo_reference: place.photos?.[0]?.photo_reference,
-                    });
-                  }}
-                  favLoading={favLoadingId === place.place_id}
                   chips={chipsByPlaceId[place.place_id] ?? []}
                 />
               );
