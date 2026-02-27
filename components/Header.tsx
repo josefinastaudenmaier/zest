@@ -57,7 +57,7 @@ export function Header() {
               rel="noopener noreferrer"
               className="text-xs font-medium leading-normal tracking-[-0.48px] text-[#152f33]/80 underline-offset-2 transition-opacity hover:opacity-100 hover:underline"
             >
-              Donar cafecito
+              cafecito
             </a>
             {loading ? (
               <span className="h-6 w-6 animate-pulse rounded-full bg-[#152f33]/10" />
@@ -66,7 +66,7 @@ export function Header() {
                 <button
                   type="button"
                   onClick={() => setUserMenuOpen((o) => !o)}
-                  className="flex items-center gap-3 rounded-full hover:opacity-90"
+                  className="flex items-center gap-2 rounded-full hover:opacity-90"
                 >
                   <div className="relative h-6 w-6 flex-shrink-0 overflow-hidden rounded-full bg-[#d9d9d9]">
                     {avatarUrl ? (
@@ -84,16 +84,13 @@ export function Header() {
                       </span>
                     )}
                   </div>
-                  <span className="max-w-[100px] truncate font-manrope text-base font-medium leading-normal tracking-[-0.64px] text-[#152f33]">
-                    {fullName || "Usuario"}
-                  </span>
                   <svg
-                    className={`h-6 w-6 flex-shrink-0 text-[#152f33] transition-transform ${userMenuOpen ? "rotate-180" : ""}`}
+                    className={`h-5 w-5 flex-shrink-0 text-[#152f33] transition-transform ${userMenuOpen ? "rotate-90" : ""}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 6l6 6-6 6" />
                   </svg>
                 </button>
                 {userMenuOpen && (
