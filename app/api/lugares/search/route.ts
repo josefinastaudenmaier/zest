@@ -302,6 +302,26 @@ function lugarToPlaceResult(
   };
 }
 
+function resolveRowCity(
+  row: Record<string, unknown>,
+  canonicalMap: Map<string, string>
+): string | null {
+  const rawCity = extractCityFromAddress((row.direccion as string | null) ?? null);
+  const canonicalCity = canonicalizeCity(rawCity, canonicalMap);
+  if (canonicalCity) return canonicalCity;
+
+  const rating = row.five_star_rating_published as number | null;
+  const review = String(row.review_text_published ?? "").trim();
+  const hasRating = typeof rating === "number" && !Number.isNaN(rating);
+  const hasReview = review.length > 0;
+
+  // Regla de negocio: si falta reseña o puntuación, asumimos CABA.
+  if (!hasReview || !hasRating) {
+    return canonicalizeCity("caba", canonicalMap) ?? "CABA";
+  }
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -387,11 +407,7 @@ export async function GET(request: NextRequest) {
   const availableCities = Array.from(
     new Set(
       baseRows
-        .map((row) => {
-          const rawCity = extractCityFromAddress((row.direccion as string | null) ?? null);
-          const city = canonicalizeCity(rawCity, canonicalMap);
-          return city ? city.trim() : "";
-        })
+        .map((row) => resolveRowCity(row, canonicalMap)?.trim() ?? "")
         .filter(Boolean)
     )
   );
@@ -409,8 +425,7 @@ export async function GET(request: NextRequest) {
   // Filtrar por ciudad si hay seleccionada
   let data: Record<string, unknown>[] = baseRows.filter((row) => {
     if (!cityFilter) return true;
-    const rawCity = extractCityFromAddress((row.direccion as string | null) ?? null);
-    const city = canonicalizeCity(rawCity, canonicalMap);
+    const city = resolveRowCity(row, canonicalMap);
     return city ? city.toLowerCase() === cityFilter : false;
   });
 
@@ -501,8 +516,7 @@ export async function GET(request: NextRequest) {
   const results = finalRows.slice(0, RESULT_LIMIT).map((row) => {
     const r = row as Record<string, unknown>;
     const mapped = lugarToPlaceResult(r);
-    const rawCity = extractCityFromAddress((r.direccion as string | null) ?? null);
-    const city = canonicalizeCity(rawCity, canonicalMap);
+    const city = resolveRowCity(r, canonicalMap);
     return { ...mapped, ciudad: city ?? undefined };
   });
 
