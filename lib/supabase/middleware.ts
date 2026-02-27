@@ -6,6 +6,15 @@ import { NextResponse, type NextRequest } from "next/server";
  * las API routes (ej. /api/favoritos) puedan leer getUser() correctamente.
  */
 export async function updateSession(request: NextRequest) {
+  if (request.nextUrl.pathname === "/" && request.nextUrl.searchParams.has("code")) {
+    const callbackUrl = request.nextUrl.clone();
+    callbackUrl.pathname = "/auth/callback";
+    if (!callbackUrl.searchParams.get("next")) {
+      callbackUrl.searchParams.set("next", "/buscar");
+    }
+    return NextResponse.redirect(callbackUrl);
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -27,7 +36,20 @@ export async function updateSession(request: NextRequest) {
   );
 
   // Refresca el token; si no se llama, la sesión puede no estar disponible en API routes
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (request.nextUrl.pathname === "/" && user) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = "/buscar";
+    redirectUrl.search = "";
+    const redirectResponse = NextResponse.redirect(redirectUrl);
+    response.cookies.getAll().forEach(({ name, value }) => {
+      redirectResponse.cookies.set(name, value, { path: "/" });
+    });
+    return redirectResponse;
+  }
 
   return response;
 }

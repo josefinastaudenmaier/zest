@@ -217,6 +217,7 @@ type FilterState = {
   espacio: string[];
   cocina: string[];
   calificacion: (typeof CALIFICACION_CHIPS)[number] | null;
+  ciudad: string | null;
 };
 
 function getPlaceSearchText(place: PlaceResult): string {
@@ -321,6 +322,11 @@ function applyFilters(
   filters: FilterState
 ): PlaceResult[] {
   return places.filter((p) => {
+    if (filters.ciudad) {
+      const selectedCity = normalizeCityForMatch(filters.ciudad);
+      const placeCity = normalizeCityForMatch(p.ciudad ?? "");
+      if (!placeCity || placeCity !== selectedCity) return false;
+    }
     if (filters.calificacion) {
       const minRating = Number.parseFloat(filters.calificacion.replace("+", ""));
       if ((p.rating ?? 0) < minRating) return false;
@@ -447,6 +453,7 @@ export default function BuscarPage() {
     espacio: [],
     cocina: [],
     calificacion: null,
+    ciudad: null,
   });
 
   const filteredResults = useMemo(
@@ -502,9 +509,22 @@ export default function BuscarPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [results, places]);
 
+  const cityOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of results) {
+      const value = (p.ciudad ?? "").trim();
+      if (value) set.add(value);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [results]);
+
   const toggleFilter = useCallback(
     (group: keyof FilterState, value: string) => {
       setFilterState((prev) => {
+        if (group === "ciudad") {
+          const next = prev.ciudad === value ? null : value;
+          return { ...prev, ciudad: next };
+        }
         if (group === "calificacion") {
           const next = prev.calificacion === value ? null : (value as FilterState["calificacion"]);
           return { ...prev, calificacion: next };
@@ -525,6 +545,7 @@ export default function BuscarPage() {
 
   const clearFilter = useCallback((group: keyof FilterState) => {
     setFilterState((prev) => {
+      if (group === "ciudad") return { ...prev, ciudad: null };
       if (group === "calificacion") return { ...prev, calificacion: null };
       if (group === "precio") return { ...prev, precio: null };
       const key = group as "ambiente" | "tipoComida" | "etnia" | "espacio" | "cocina";
@@ -658,7 +679,6 @@ export default function BuscarPage() {
     try {
       const params = new URLSearchParams({ q });
       if (paisSelected.trim()) params.set("pais", paisSelected.trim());
-      if (ciudadSelected.trim()) params.set("ciudad", ciudadSelected.trim());
       const res = await fetch(`/api/lugares/search?${params.toString()}`, {
         method: "GET",
         headers: { Accept: "application/json" },
@@ -677,9 +697,27 @@ export default function BuscarPage() {
         throw new Error(data?.error || `Error ${res.status} en la búsqueda`);
       }
       const raw = (data.results ?? []) as PlaceResult[];
-      setResults(sortSearchResults(raw, q, userCoords));
+      const sortedResults = sortSearchResults(raw, q, userCoords);
+      const resultCities = Array.from(
+        new Set(
+          sortedResults
+            .map((p) => (p.ciudad ?? "").trim())
+            .filter((city) => city.length > 0)
+        )
+      );
+      const defaultSearchCity = resolveCityFromList("caba", resultCities);
+      setResults(sortedResults);
       setHasActiveSearch(true);
-      setFilterState({ precio: null, ambiente: [], tipoComida: [], etnia: [], espacio: [], cocina: [], calificacion: null });
+      setFilterState({
+        precio: null,
+        ambiente: [],
+        tipoComida: [],
+        etnia: [],
+        espacio: [],
+        cocina: [],
+        calificacion: null,
+        ciudad: defaultSearchCity,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error en la búsqueda");
       setResults([]);
@@ -694,7 +732,7 @@ export default function BuscarPage() {
     setResults([]);
     setHasActiveSearch(false);
     setError(null);
-    setFilterState({ precio: null, ambiente: [], tipoComida: [], etnia: [], espacio: [], cocina: [], calificacion: null });
+    setFilterState({ precio: null, ambiente: [], tipoComida: [], etnia: [], espacio: [], cocina: [], calificacion: null, ciudad: null });
   }, []);
 
   return (
@@ -748,6 +786,62 @@ export default function BuscarPage() {
                 )}
               </p>
               <div className="flex flex-wrap gap-3">
+                <div className="relative shrink-0">
+                  <div
+                    role="group"
+                    className={`flex items-center rounded-[1000px] overflow-hidden ${
+                      filterState.ciudad
+                        ? "border border-[#191E1F] text-[#191E1F] bg-[linear-gradient(180deg,rgba(108,130,133,0.12)_0%,rgba(25,30,31,0.12)_100%)]"
+                        : "border border-[#f7f3f1] bg-white"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setOpenDropdown((d) => (d === "ciudad" ? null : "ciudad"))}
+                      className={`flex min-w-0 flex-1 items-center gap-1 px-3 py-1.5 text-left font-manrope text-base font-medium leading-normal tracking-[-0.64px] ${
+                        filterState.ciudad ? "text-[#191E1F] hover:bg-black/5" : "text-[#152f33] hover:bg-[#fafafa]"
+                      }`}
+                    >
+                      {filterState.ciudad ?? "Ciudad"}
+                    </button>
+                    {filterState.ciudad && (
+                      <button
+                        type="button"
+                        onClick={() => clearFilter("ciudad")}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center text-[#191E1F] hover:bg-black/10"
+                        aria-label="Quitar filtro Ciudad"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 6L6 18M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  {openDropdown === "ciudad" && (
+                    <div className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-xl border border-[#152f33]/15 bg-white py-2 shadow-lg">
+                      {cityOptions.length > 0 ? (
+                        cityOptions.map((city) => {
+                          const active = filterState.ciudad === city;
+                          return (
+                            <button
+                              key={city}
+                              type="button"
+                              onClick={() => toggleFilter("ciudad", city)}
+                              className={`font-manrope flex w-full items-center gap-2 px-4 py-2 text-left text-sm transition hover:bg-[#152f33]/5 ${active ? "bg-[var(--btn-primary-from)]/15 text-[var(--btn-primary-from)] font-medium" : "text-[#152f33]"}`}
+                            >
+                              {active && <span className="text-[var(--btn-primary-from)]">✓</span>}
+                              {city}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <span className="font-manrope block px-4 py-2 text-sm text-[#152f33]/60">
+                          Sin ciudades disponibles
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <div className="relative shrink-0">
                   <div
                     role="group"

@@ -7,7 +7,7 @@ import type { User } from "@supabase/supabase-js";
 type AuthContextType = {
   user: User | null;
   loading: boolean;
-  signInWithGoogle: () => Promise<{ ok: boolean; message?: string }>;
+  signInWithGoogle: (nextPath?: string) => Promise<{ ok: boolean; message?: string }>;
   signOut: () => Promise<void>;
 };
 
@@ -31,7 +31,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, [supabase]);
 
-  const signInWithGoogle = async () => {
+  const signInWithGoogle = async (nextPath = "/buscar") => {
     try {
       const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
       const envSiteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim() ?? "";
@@ -49,9 +49,19 @@ export function Providers({ children }: { children: React.ReactNode }) {
         }
       };
 
+      const normalizeNextPath = (raw: string): string => {
+        const trimmed = raw.trim();
+        if (!trimmed || !trimmed.startsWith("/") || trimmed.startsWith("//")) return "/buscar";
+        return trimmed;
+      };
+
       const browserCallback = normalizeCallbackUrl(browserOrigin);
       const envCallback = normalizeCallbackUrl(envSiteUrl);
-      const redirectTo = browserCallback ?? envCallback ?? undefined;
+      const callbackBase = browserCallback ?? envCallback;
+      const safeNextPath = normalizeNextPath(nextPath);
+      const redirectTo = callbackBase
+        ? `${callbackBase}?next=${encodeURIComponent(safeNextPath)}`
+        : undefined;
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
